@@ -1,0 +1,78 @@
+from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel, field_validator
+from app.models import ListingStatus
+
+class ListingCreateIn(BaseModel):
+    name: str
+    category: str
+    description: str = ""
+    years_owned: float = 0
+    price_bought: float = 0
+    price_per_day: float
+    min_price_per_day: Optional[float] = None
+    security_deposit: float = 0
+    lending_radius_km: float = 10
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    address_text: str = ""
+    photo_urls: List[str] = []
+    ai_label: Optional[str] = None
+    ai_confidence: Optional[float] = None
+
+    @field_validator('min_price_per_day')
+
+    def validate_min_price(cls, v, values):
+        if v is not None and 'price_per_day' in values.data and v > values.data['price_per_day']:
+            raise ValueError("min_price_per_day cannot be greater than price_per_day")
+        return v
+
+class ListingUpdateIn(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price_per_day: Optional[float] = None
+    min_price_per_day: Optional[float] = None
+    security_deposit: Optional[float] = None
+    lending_radius_km: Optional[float] = None
+    status: Optional[ListingStatus] = None
+
+class ListingOut(BaseModel):
+    id: str
+    owner_id: str
+    owner_name: Optional[str] = None
+    owner_trust_score: Optional[float] = 50.0
+    owner_avg_rating: Optional[float] = 0.0
+    owner_rating_count: Optional[int] = 0
+    name: str
+    category: str
+    description: str
+    years_owned: float
+    price_bought: float
+    price_per_day: float
+    security_deposit: float
+    lending_radius_km: float
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    address_text: str
+    status: ListingStatus
+    moderation_reason: Optional[str] = None
+    ai_label: Optional[str] = None
+    ai_confidence: Optional[float] = None
+    photos: List[str] = []
+    is_currently_rented: bool = False
+    distance_km: Optional[float] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class SuggestPriceIn(BaseModel):
+    category: str
+    years_owned: float = 0
+    price_bought: float = 0
+
+class SuggestPriceOut(BaseModel):
+    suggested_price_per_day: float
+    current_value_estimate: float
+    daily_rate_used: float
+    explanation: str

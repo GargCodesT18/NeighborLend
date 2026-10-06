@@ -1,0 +1,248 @@
+.create-listing-page {
+  padding-top: 40px;
+  padding-bottom: 80px;
+  display: flex;
+  justify-content: center;
+}
+
+.wizard-container {
+  width: 100%;
+  max-width: 800px;
+  padding: 40px;
+  border-radius: var(--radius-lg);
+}
+
+.wizard-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.step-indicator {
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: var(--transition);
+}
+
+.step-indicator.active {
+  color: var(--accent-primary);
+}
+
+.step-line {
+  flex-grow: 1;
+  height: 2px;
+  background: var(--border-light);
+  margin: 0 16px;
+}
+
+.wizard-step h2 {
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.text-muted {
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+}
+
+/* Dropzone */
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--transition);
+  background: rgba(255, 255, 255, 0.02);
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropzone:hover {
+  border-color: var(--accent-primary);
+  background: rgba(0, 212, 170, 0.05);
+}
+
+.dropzone.has-image {
+  border-style: solid;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.dropzone-content {
+  color: var(--text-secondary);
+}
+
+.upload-icon {
+  color: var(--accent-primary);
+  margin-bottom: 16px;
+}
+
+.preview-container {
+  width: 100%;
+  height: 400px;
+  position: relative;
+}
+
+.image-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.reupload-btn {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+}
+
+/* AI Results */
+.ai-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  color: var(--accent-secondary);
+  font-weight: 500;
+}
+
+.sparkle-icon {
+  animation: pulse 1.5s infinite;
+}
+
+.ai-result {
+  margin-top: 24px;
+  padding: 20px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ai-result.success {
+  background: rgba(0, 212, 170, 0.1);
+  border: 1px solid rgba(0, 212, 170, 0.2);
+  color: var(--success);
+}
+
+.ai-result-text {
+  flex-grow: 1;
+}
+
+.ai-result-text h4 {
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.confidence-bar-bg {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+
+.confidence-bar {
+  height: 100%;
+  background: var(--accent-gradient);
+  border-radius: 3px;
+}
+
+.confidence-text {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Form Grid */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.price-suggestion-box {
+  padding: 24px;
+  border: 1px dashed var(--accent-secondary);
+  background: rgba(124, 58, 237, 0.05);
+}
+
+.box-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.text-accent {
+  color: var(--accent-secondary);
+}
+
+.input-with-button {
+  display: flex;
+  gap: 12px;
+}
+
+.input-with-button input {
+  flex-grow: 1;
+}
+
+.icon-btn {
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.full-width-slider {
+  width: 100%;
+}
+
+.wizard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-light);
+}
+
+.publish-btn {
+  min-width: 160px;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@media (max-width: 768px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .wizard-progress { font-size: 0.8rem; }
+}
