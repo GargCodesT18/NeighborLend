@@ -1,102 +1,140 @@
-# NeighbourLend
+# NeighborLend - Architecture & Class Diagram
 
-NeighbourLend is a full-stack application featuring a FastAPI Python backend and a React (Vite) frontend.
+This document provides a clear overview of the file architecture and the core business logic classes (database models) used in the NeighborLend application, following standard UML guidelines. 
 
-## Prerequisites
+## 1. File Architecture
 
-Before you begin, ensure you have the following installed on your machine:
-- **Node.js** (v16 or higher recommended)
-- **Python** (v3.8 or higher)
-- **Git**
+The project is structured as a modern full-stack web application with a clear separation of concerns.
 
-## Cloning the Repository
+### Frontend (`/frontend`)
+Built with React and Vite.
+- **`src/api/`**: Contains `client.js` for Axios configuration and interceptors to communicate with the backend.
+- **`src/components/`**: Reusable UI components (e.g., `Navbar.jsx`, `ListingCard.jsx`, `Footer.jsx`).
+- **`src/context/`**: React Context providers for global state management (e.g., `AuthContext.jsx`).
+- **`src/pages/`**: Top-level page components representing routes (e.g., `Home.jsx`, `Browse.jsx`, `CreateListing.jsx`, `Register.jsx`).
+- **`src/design/`**: Global stylesheets and CSS variables.
 
-To get started, clone the repository to your local machine:
+### Backend (`/backend`)
+Built with Python and FastAPI.
+- **`app/models.py`**: SQLAlchemy ORM models defining the database schema and relationships (the core classes of our system).
+- **`app/schemas/`**: Pydantic models for data validation, serialization, and deserialization (API request/response payloads).
+- **`app/routers/`**: FastAPI route handlers defining the API endpoints (e.g., `auth.py`, `listings.py`, `uploads.py`).
+- **`app/services/`**: Business logic, external integrations, and ML services (e.g., `ml_service.py`, `storage_service.py`).
+- **`app/database.py`**: Database connection setup and session management.
+- **`ai_service/`**: Contains the YOLO ML models (`best_model.pt`) used for image object detection.
 
-```bash
-git clone <your-repository-url>
-cd se
+---
+
+## 2. UML Class Diagram
+
+The following class diagram illustrates the core entities of the application based on our backend database models (`app/models.py`), adhering to standard UML guidelines.
+
+### Class Diagram Details
+- **Classes** contain attributes and their data types.
+- **`+`** denotes public attributes (accessible publicly).
+- **`-`** denotes private attributes (internal to the class/system, such as IDs or password hashes).
+- **Association**: `User` is associated with `BorrowRequest` (A user places a borrow request).
+- **Composition**: `Listing` has a composition relationship with `ListingPhoto`. A photo cannot exist without its parent listing (represented by a filled diamond in UML, `*--` in Mermaid).
+- **Aggregation / Association**: `User` owns a `Listing` (A listing belongs to a user, represented by an empty diamond or standard association).
+
+```mermaid
+classDiagram
+    class User {
+        -String id
+        +String name
+        +String username
+        +String email
+        +String phone
+        -String password_hash
+        +String avatar_url
+        +Float trust_score
+        +Float avg_rating
+        +Integer rating_count
+        +Integer completed_rentals_count
+        +Integer disputes_against_count
+        +Boolean is_admin
+        +DateTime created_at
+    }
+
+    class Listing {
+        -String id
+        +String name
+        +String category
+        +Text description
+        +Float years_owned
+        +Float price_bought
+        +Float price_per_day
+        +Float min_price_per_day
+        +Float security_deposit
+        +Float lending_radius_km
+        +Float latitude
+        +Float longitude
+        +String address_text
+        +ListingStatus status
+        +String moderation_reason
+        +String ai_label
+        +Float ai_confidence
+        +DateTime created_at
+        +DateTime updated_at
+    }
+
+    class ListingPhoto {
+        -String id
+        +String url
+        +Boolean is_cover
+        +DateTime created_at
+    }
+
+    class BorrowRequest {
+        -String id
+        +String title
+        +String category
+        +Text description
+        +Float max_price_per_day
+        +DateTime needed_from
+        +DateTime needed_until
+        +Float latitude
+        +Float longitude
+        +Float radius_km
+        +String address_text
+        +BorrowRequestStatus status
+        +DateTime created_at
+        +DateTime updated_at
+    }
+
+    class ListingStatus {
+        <<enumeration>>
+        draft
+        pending_review
+        published
+        flagged
+        paused
+        removed
+    }
+
+    class BorrowRequestStatus {
+        <<enumeration>>
+        open
+        fulfilled
+        closed
+        cancelled
+    }
+
+    %% Relationships
+    User "1" --> "*" Listing : owns
+    User "1" --> "*" BorrowRequest : places
+
+    %% Composition (Listing owns ListingPhoto, if listing deleted, photos deleted)
+    Listing "1" *-- "*" ListingPhoto : contains
+
+    %% Enums dependencies
+    Listing ..> ListingStatus : uses
+    BorrowRequest ..> BorrowRequestStatus : uses
 ```
 
----
+### Explanation of the UML Class Architecture
 
-## 1. Backend Setup (FastAPI)
-
-The backend is built with FastAPI and uses SQLAlchemy for database management.
-
-1. **Navigate to the backend directory:**
-   ```bash
-   cd backend
-   ```
-
-2. **Create a virtual environment (optional but recommended):**
-   ```bash
-   python -m venv venv
-   ```
-
-3. **Activate the virtual environment:**
-   - On Windows:
-     ```bash
-     venv\Scripts\activate
-     ```
-   - On macOS/Linux:
-     ```bash
-     source venv/bin/activate
-     ```
-
-4. **Install the required dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-5. **Set up Environment Variables:**
-   Create a `.env` file in the `backend` directory based on your configuration needs (e.g., database connection string, secret keys).
-
-6. **Run the backend server:**
-   ```bash
-   uvicorn main:app --reload
-   ```
-   *(Note: Replace `main:app` with the correct entry point if it differs in your project. The server typically runs on `http://localhost:8000`)*
-
----
-
-## 2. Frontend Setup (React/Vite)
-
-The frontend is built with React and Vite for fast development.
-
-1. **Navigate to the frontend directory:**
-   Open a new terminal window/tab, and from the root project folder, run:
-   ```bash
-   cd frontend
-   ```
-
-2. **Install frontend dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Set up Environment Variables (if required):**
-   Create a `.env` file in the `frontend` directory if your frontend needs any API keys or configuration (e.g., `VITE_API_URL=http://localhost:8000`).
-
-4. **Start the development server:**
-   ```bash
-   npm run dev
-   ```
-   *The frontend will typically run on `http://localhost:5173`.*
-
----
-
-## Usage
-
-Once both servers are running:
-1. Open your browser and navigate to `http://localhost:5173` to view the frontend application.
-2. The frontend will communicate with your local backend API running at `http://localhost:8000`.
-
-## Database
-
-The project currently uses a local database (`neighborlend.db`). Alembic can be used for database migrations if you make schema changes.
-
-```bash
-# To run migrations (if alembic is configured)
-alembic upgrade head
-```
+1. **User**: The central entity representing a registered user on the platform. It holds both authentication data (private) and public profile metrics (`trust_score`, `avg_rating`).
+2. **Listing**: Represents an item available for rent. It is associated with a specific `User` (the owner). It relies on the `ListingStatus` enumeration to track its lifecycle.
+3. **ListingPhoto**: Represents images uploaded for a listing. It has a **Composition** relationship with `Listing`, meaning that if a `Listing` is deleted, its associated `ListingPhoto` objects are also destroyed (handled via cascade delete).
+4. **BorrowRequest**: Represents a user's request to borrow an item they couldn't find in the listings. It is associated with the `User` (the borrower) and utilizes the `BorrowRequestStatus` enumeration.

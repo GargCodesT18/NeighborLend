@@ -18,14 +18,32 @@ def haversine(lat1, lon1, lat2, lon2):
     return R * 2 * math.asin(math.sqrt(a))
 
 def _format_listing_out(listing: Listing, distance_km: Optional[float] = None) -> dict:
+    address_str = listing.address_text or ""
+    if not address_str and listing.latitude is not None and listing.longitude is not None:
+        address_str = f"Location ({listing.latitude:.4f}°, {listing.longitude:.4f}°)"
+
+    owner_dict = None
+    if listing.owner:
+        owner_dict = {
+            "id": listing.owner.id,
+            "name": listing.owner.name,
+            "username": listing.owner.username,
+            "trust_score": listing.owner.trust_score,
+            "rating": listing.owner.avg_rating,
+            "rating_count": listing.owner.rating_count
+        }
+
     return {
         "id": listing.id,
         "owner_id": listing.owner_id,
-        "owner_name": listing.owner.name,
-        "owner_trust_score": listing.owner.trust_score,
-        "owner_avg_rating": listing.owner.avg_rating,
-        "owner_rating_count": listing.owner.rating_count,
+        "owner_name": listing.owner.name if listing.owner else "Unknown",
+        "owner_username": listing.owner.username if listing.owner else "Unknown",
+        "owner": owner_dict,
+        "owner_trust_score": listing.owner.trust_score if listing.owner else 50.0,
+        "owner_avg_rating": listing.owner.avg_rating if listing.owner else 0.0,
+        "owner_rating_count": listing.owner.rating_count if listing.owner else 0,
         "name": listing.name,
+        "title": listing.name,
         "category": listing.category,
         "description": listing.description,
         "years_owned": listing.years_owned,
@@ -35,14 +53,15 @@ def _format_listing_out(listing: Listing, distance_km: Optional[float] = None) -
         "lending_radius_km": listing.lending_radius_km,
         "latitude": listing.latitude,
         "longitude": listing.longitude,
-        "address_text": listing.address_text,
+        "address_text": listing.address_text or "",
+        "address": address_str,
         "status": listing.status,
         "moderation_reason": listing.moderation_reason,
         "ai_label": listing.ai_label,
         "ai_confidence": listing.ai_confidence,
         "photos": [p.url for p in listing.photos],
         "is_currently_rented": False,
-        "distance_km": distance_km,
+        "distance_km": None if distance_km == float('inf') else distance_km,
         "created_at": listing.created_at
     }
 
@@ -102,8 +121,11 @@ def search_listings(
     for l in all_listings:
         if l.latitude is not None and l.longitude is not None:
             dist = haversine(lat, lon, l.latitude, l.longitude)
-            if dist <= radius_km and dist <= l.lending_radius_km:
+            if dist <= radius_km:
                 results.append((dist, l))
+        else:
+            # Include items without location at the end of the results
+            results.append((float('inf'), l))
                 
     results.sort(key=lambda x: x[0])
     return [_format_listing_out(l, dist) for dist, l in results]

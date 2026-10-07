@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel, EmailStr
 
 class CaptchaOut(BaseModel):
@@ -13,7 +13,7 @@ class RegisterIn(BaseModel):
     phone: Optional[str] = None
     password: str
     captcha_id: str
-    captcha_answer: int
+    captcha_answer: Union[int, str]
 
 class LoginIn(BaseModel):
     username_or_email: str

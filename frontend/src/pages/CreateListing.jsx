@@ -17,6 +17,7 @@ const CreateListing = () => {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [aiData, setAiData] = useState(null);
+  const [uploadedUrl, setUploadedUrl] = useState(null);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -26,8 +27,8 @@ const CreateListing = () => {
     original_price: '',
     price_per_day: '',
     security_deposit: '',
-    lat: '',
-    lon: '',
+    lat: 28.6139,
+    lon: 77.2090,
     address: '',
     lending_radius: 5
   });
@@ -56,22 +57,28 @@ const CreateListing = () => {
       const form = new FormData();
       form.append('file', selectedFile);
       
-      // Mock AI Identify Call
-      // const aiRes = await api.post('/ai/identify', form);
-      // setAiData(aiRes.data);
+      const uploadRes = await api.post('/upload', form, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      const data = uploadRes.data;
       
-      // Simulate network delay
-      await new Promise(r => setTimeout(r, 1500));
+      setUploadedUrl(data.url);
       
-      const mockAiRes = { label: 'Power Drill', confidence: 94, suggested_category: 'Tools' };
-      setAiData(mockAiRes);
-      
-      setFormData(prev => ({
-        ...prev,
-        title: mockAiRes.label,
-        category: mockAiRes.suggested_category
-      }));
-      
+      if (data.ai_label) {
+        setAiData({ 
+          label: data.ai_label, 
+          confidence: (data.ai_confidence * 100).toFixed(0), 
+          suggested_category: 'Other' 
+        });
+        setFormData(prev => ({
+          ...prev,
+          title: data.ai_label
+        }));
+      } else {
+        setAiData(null);
+      }
     } catch (err) {
       console.error(err);
       setAiOffline(true);
@@ -115,8 +122,24 @@ const CreateListing = () => {
   const handleSubmit = async () => {
     setIsLoading(true);
     try {
-      // In a real app, upload image to get URL, then post listing data
-      await api.post('/listings', { ...formData, image_url: 'mock_url' });
+      const payload = {
+        name: formData.title,
+        category: formData.category,
+        description: formData.description,
+        years_owned: Number(formData.years_owned),
+        price_bought: Number(formData.original_price),
+        price_per_day: Number(formData.price_per_day),
+        security_deposit: Number(formData.security_deposit),
+        lending_radius_km: Number(formData.lending_radius),
+        latitude: formData.lat ? Number(formData.lat) : null,
+        longitude: formData.lon ? Number(formData.lon) : null,
+        address_text: formData.address,
+        ai_label: aiData?.label || null,
+        ai_confidence: aiData ? Number(aiData.confidence) / 100.0 : null,
+        photo_urls: uploadedUrl ? [uploadedUrl] : []
+      };
+
+      await api.post('/listings', payload);
       navigate('/my-listings');
     } catch (err) {
       console.error(err);

@@ -1,7 +1,7 @@
 import uuid
 import bcrypt
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Union
 from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -70,12 +70,15 @@ def issue_captcha() -> dict:
     _captcha_store[captcha_id] = answer
     return {"captcha_id": captcha_id, "question": question}
 
-def verify_captcha(captcha_id: str, answer: int) -> bool:
+def verify_captcha(captcha_id: str, answer: Optional[Union[int, str]]) -> bool:
     if captcha_id in _captcha_store:
         correct_answer = _captcha_store.pop(captcha_id)
-        return answer == correct_answer
+        try:
+            return int(answer) == int(correct_answer)
+        except (ValueError, TypeError):
+            return False
     return False
 
-def require_valid_captcha(captcha_id: str, answer: int):
+def require_valid_captcha(captcha_id: str, answer: Optional[Union[int, str]]):
     if not verify_captcha(captcha_id, answer):
         raise HTTPException(status_code=400, detail="Invalid captcha")

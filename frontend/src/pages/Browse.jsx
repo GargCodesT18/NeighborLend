@@ -20,7 +20,6 @@ const Browse = () => {
   const fetchListings = async () => {
     setLoading(true);
     try {
-      // Mock API params construction
       const params = new URLSearchParams();
       if (searchQuery) params.append('q', searchQuery);
       if (category !== 'All') params.append('category', category);
@@ -28,22 +27,11 @@ const Browse = () => {
       params.append('lon', location.lon);
       params.append('radius_km', radius);
 
-      // In real scenario: const res = await api.get(`/listings/search?${params.toString()}`);
-      // For now, let's mock or call empty
-      const res = await api.get(`/listings/search?${params.toString()}`).catch(() => ({ data: [] }));
-      
-      // Mock data if API is down
-      if (!res.data || res.data.length === 0) {
-        setListings([
-          { id: 1, title: 'Bosch Power Drill', price_per_day: 150, category: 'Tools', address: 'Connaught Place, Delhi', distance_km: 2.4, owner: { username: 'ajay_s', rating: 4.8 } },
-          { id: 2, title: 'Sony PS5 Console + 2 Controllers', price_per_day: 800, category: 'Electronics', address: 'Hauz Khas, Delhi', distance_km: 5.1, owner: { username: 'gamer99', rating: 4.9 } },
-          { id: 3, title: 'Trekking Tent (4 Person)', price_per_day: 300, category: 'Sports', address: 'Vasant Kunj, Delhi', distance_km: 8.7, owner: { username: 'trekker', rating: 5.0 } },
-        ]);
-      } else {
-        setListings(res.data);
-      }
+      const res = await api.get(`/listings/search?${params.toString()}`);
+      setListings(res.data || []);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to fetch listings:', err);
+      setListings([]);
     } finally {
       setLoading(false);
     }
@@ -51,7 +39,7 @@ const Browse = () => {
 
   useEffect(() => {
     fetchListings();
-  }, [category]); // Re-fetch when category changes
+  }, [category, radius, location]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -115,8 +103,7 @@ const Browse = () => {
                 type="range" 
                 min="1" max="50" 
                 value={radius} 
-                onChange={(e) => setRadius(e.target.value)}
-                onMouseUp={fetchListings}
+                onChange={(e) => setRadius(Number(e.target.value))}
                 className="radius-slider"
               />
             </div>

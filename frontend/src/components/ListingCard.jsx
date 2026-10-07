@@ -10,11 +10,28 @@ const ListingCard = ({ listing }) => {
     navigate(`/listing/${listing.id}`);
   };
 
+  const titleText = listing.title || listing.name || 'Untitled Item';
+
+  const ownerName = listing.owner?.username || listing.owner?.name || listing.owner_username || listing.owner_name || 'Owner';
+  const ownerInitial = ownerName[0]?.toUpperCase() || 'U';
+  const rawRating = listing.owner?.rating ?? listing.owner?.avg_rating ?? listing.owner_avg_rating;
+  const ownerRating = typeof rawRating === 'number' ? (rawRating > 0 ? rawRating.toFixed(1) : '5.0') : '5.0';
+
+  let locationText = listing.address || listing.address_text;
+  if (!locationText && listing.latitude != null && listing.longitude != null) {
+    locationText = `${listing.latitude.toFixed(4)}°, ${listing.longitude.toFixed(4)}°`;
+  }
+  if (!locationText) {
+    locationText = 'Location unavailable';
+  }
+
+  const imageUrl = listing.image_url || listing.photos?.[0];
+
   return (
     <div className="listing-card glass" onClick={handleClick}>
       <div className="listing-photo-area">
-        {listing.image_url ? (
-          <img src={listing.image_url} alt={listing.title} className="listing-photo" />
+        {imageUrl ? (
+          <img src={imageUrl} alt={titleText} className="listing-photo" />
         ) : (
           <div className="listing-photo-placeholder">
             <ImageIcon size={48} className="placeholder-icon" />
@@ -32,24 +49,24 @@ const ListingCard = ({ listing }) => {
       </div>
 
       <div className="listing-content">
-        <h3 className="listing-title">{listing.title}</h3>
+        <h3 className="listing-title">{titleText}</h3>
         
         <div className="listing-location">
           <MapPin size={14} className="location-icon" />
-          <span>{listing.address || 'Location unavailable'}</span>
-          {listing.distance_km && (
+          <span>{locationText}</span>
+          {listing.distance_km != null && (
             <span className="distance-badge">• {listing.distance_km.toFixed(1)} km</span>
           )}
         </div>
 
         <div className="listing-owner">
           <div className="owner-avatar">
-            <span className="owner-initial">{listing.owner?.username?.[0]?.toUpperCase() || 'U'}</span>
+            <span className="owner-initial">{ownerInitial}</span>
           </div>
-          <span className="owner-name">{listing.owner?.username || 'Unknown User'}</span>
+          <span className="owner-name">{ownerName}</span>
           <div className="owner-rating">
             <Star size={12} className="star-icon" fill="currentColor" />
-            <span>{listing.owner?.rating || '4.9'}</span>
+            <span>{ownerRating}</span>
           </div>
         </div>
       </div>

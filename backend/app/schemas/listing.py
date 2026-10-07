@@ -36,14 +36,25 @@ class ListingUpdateIn(BaseModel):
     lending_radius_km: Optional[float] = None
     status: Optional[ListingStatus] = None
 
+class OwnerOut(BaseModel):
+    id: str
+    name: str
+    username: str
+    trust_score: float = 50.0
+    rating: float = 0.0
+    rating_count: int = 0
+
 class ListingOut(BaseModel):
     id: str
     owner_id: str
     owner_name: Optional[str] = None
+    owner_username: Optional[str] = None
+    owner: Optional[OwnerOut] = None
     owner_trust_score: Optional[float] = 50.0
     owner_avg_rating: Optional[float] = 0.0
     owner_rating_count: Optional[int] = 0
     name: str
+    title: Optional[str] = None
     category: str
     description: str
     years_owned: float
@@ -53,7 +64,8 @@ class ListingOut(BaseModel):
     lending_radius_km: float
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    address_text: str
+    address_text: str = ""
+    address: Optional[str] = None
     status: ListingStatus
     moderation_reason: Optional[str] = None
     ai_label: Optional[str] = None

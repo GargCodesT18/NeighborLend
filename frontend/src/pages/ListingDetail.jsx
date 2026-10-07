@@ -12,31 +12,10 @@ const ListingDetail = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Mock fetch listing by id
     const fetchListing = async () => {
       try {
-        await new Promise(r => setTimeout(r, 800));
-        setListing({
-          id,
-          title: 'Bosch Professional Power Drill',
-          description: 'High power professional drill. Works perfectly. Comes with a set of 10 bits. Only used a few times for home projects.',
-          price_per_day: 150,
-          security_deposit: 1000,
-          category: 'Tools',
-          address: 'Connaught Place, New Delhi',
-          lat: 28.6304,
-          lon: 77.2177,
-          image_url: null,
-          ai_label: 'Power Drill',
-          ai_confidence: 96,
-          owner: {
-            id: 2,
-            username: 'ajay_s',
-            rating: 4.8,
-            member_since: '2023',
-            trust_score: 85
-          }
-        });
+        const res = await api.get(`/listings/${id}`);
+        setListing(res.data);
       } catch (err) {
         console.error(err);
       } finally {
@@ -49,13 +28,14 @@ const ListingDetail = () => {
   if (loading) return <div className="loading-state">Loading...</div>;
   if (!listing) return <div className="loading-state">Listing not found</div>;
 
-  const isOwner = user && user.username === listing.owner.username; // simplified check
+  const isOwner = user && listing.owner && user.username === listing.owner.username;
+  const imageUrl = listing.photos && listing.photos.length > 0 ? listing.photos[0] : listing.image_url;
 
   return (
     <div className="listing-detail-page fade-in-up">
       <div className="detail-hero">
-        {listing.image_url ? (
-          <img src={listing.image_url} alt={listing.title} className="detail-hero-image" />
+        {imageUrl ? (
+          <img src={imageUrl} alt={listing.title} className="detail-hero-image" />
         ) : (
           <div className="detail-hero-placeholder"></div>
         )}
@@ -90,7 +70,7 @@ const ListingDetail = () => {
                 <Check size={20} className="text-success" />
                 <h3>AI Verified</h3>
               </div>
-              <p>Our AI identified this item as <strong>{listing.ai_label}</strong> with {listing.ai_confidence}% confidence.</p>
+              <p>Our AI identified this item as <strong>{listing.ai_label}</strong> with {Math.round(listing.ai_confidence * 100)}% confidence.</p>
             </section>
           )}
 
@@ -133,22 +113,22 @@ const ListingDetail = () => {
           <div className="owner-card glass">
             <div className="owner-header">
               <div className="owner-avatar-large">
-                {listing.owner.username[0].toUpperCase()}
+                {(listing.owner?.username || listing.owner_username || 'U')[0].toUpperCase()}
               </div>
               <div>
-                <h4>{listing.owner.username}</h4>
-                <div className="member-since">Member since {listing.owner.member_since}</div>
+                <h4>{listing.owner?.username || listing.owner_username}</h4>
+                <div className="member-since">Member since {listing.owner?.member_since || '2023'}</div>
               </div>
             </div>
             
             <div className="owner-stats">
               <div className="stat">
                 <Star className="text-warning" size={18} fill="currentColor" />
-                <span>{listing.owner.rating} Rating</span>
+                <span>{listing.owner?.rating || listing.owner_avg_rating || 5.0} Rating</span>
               </div>
               <div className="stat">
                 <Shield className="text-success" size={18} />
-                <span>{listing.owner.trust_score} Trust Score</span>
+                <span>{listing.owner?.trust_score || listing.owner_trust_score || 100} Trust Score</span>
               </div>
             </div>
           </div>

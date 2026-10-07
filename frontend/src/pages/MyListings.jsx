@@ -9,14 +9,10 @@ const MyListings = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Mock fetch my listings
     const fetchMyListings = async () => {
       try {
-        await new Promise(r => setTimeout(r, 600));
-        setListings([
-          { id: 1, title: 'Bosch Power Drill', category: 'Tools', price_per_day: 150, status: 'published', views: 42, requests: 1 },
-          { id: 2, title: 'Sony PS5', category: 'Electronics', price_per_day: 800, status: 'paused', views: 120, requests: 0 }
-        ]);
+        const res = await api.get('/listings');
+        setListings(res.data);
       } catch (err) {
         console.error(err);
       } finally {
@@ -26,13 +22,24 @@ const MyListings = () => {
     fetchMyListings();
   }, []);
 
-  const toggleStatus = (id, currentStatus) => {
+  const toggleStatus = async (id, currentStatus) => {
     const newStatus = currentStatus === 'published' ? 'paused' : 'published';
-    setListings(listings.map(l => l.id === id ? { ...l, status: newStatus } : l));
+    try {
+      await api.patch(`/listings/${id}`, { status: newStatus });
+      setListings(listings.map(l => l.id === id ? { ...l, status: newStatus } : l));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const deleteListing = (id) => {
-    setListings(listings.filter(l => l.id !== id));
+  const deleteListing = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this listing?')) return;
+    try {
+      await api.delete(`/listings/${id}`);
+      setListings(listings.filter(l => l.id !== id));
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   return (
