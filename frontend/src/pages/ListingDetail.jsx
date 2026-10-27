@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { MapPin, Star, Shield, AlertCircle, Clock, Check } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { MapPin, Star, Shield, AlertCircle, Clock, Check, MessageSquare } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import './ListingDetail.css';
 
 const ListingDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [listing, setListing] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [startingChat, setStartingChat] = useState(false);
 
   useEffect(() => {
     const fetchListing = async () => {
@@ -30,6 +32,27 @@ const ListingDetail = () => {
 
   const isOwner = user && listing.owner && user.username === listing.owner.username;
   const imageUrl = listing.photos && listing.photos.length > 0 ? listing.photos[0] : listing.image_url;
+
+  const handleChatWithOwner = async () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    if (isOwner) {
+      alert("You cannot start a conversation on your own listing.");
+      return;
+    }
+    setStartingChat(true);
+    try {
+      const res = await api.post('/conversations', { listing_id: listing.id });
+      navigate(`/messages/${res.data.id}`);
+    } catch (err) {
+      console.error('Failed to open chat:', err);
+      alert(err.response?.data?.detail || 'Failed to start conversation.');
+    } finally {
+      setStartingChat(false);
+    }
+  };
 
   return (
     <div className="listing-detail-page fade-in-up">
@@ -98,13 +121,20 @@ const ListingDetail = () => {
               </div>
             ) : (
               <div className="borrower-actions">
-                <button className="btn-primary full-width mb-3 tooltip-wrapper">
-                  Book Now
-                  <span className="tooltip-text">Coming soon in MVP v2</span>
+                <button 
+                  className="btn-primary full-width mb-3"
+                  onClick={handleChatWithOwner}
+                  disabled={startingChat}
+                >
+                  <MessageSquare size={18} style={{ marginRight: '8px', verticalAlign: 'middle', display: 'inline' }} />
+                  {startingChat ? 'Connecting...' : 'Chat with Owner'}
                 </button>
-                <button className="btn-outline full-width tooltip-wrapper">
-                  Negotiate
-                  <span className="tooltip-text">Coming soon in MVP v2</span>
+                <button 
+                  className="btn-outline full-width"
+                  onClick={handleChatWithOwner}
+                  disabled={startingChat}
+                >
+                  Negotiate Price
                 </button>
               </div>
             )}

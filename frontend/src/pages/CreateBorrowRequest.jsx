@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
+import { detectUserLocation } from '../utils/location';
 import './CreateBorrowRequest.css';
 
 const CATEGORIES = [
@@ -28,21 +29,26 @@ export default function CreateBorrowRequest() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleUseLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setFormData(prev => ({
-            ...prev,
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            address_text: `Lat: ${pos.coords.latitude.toFixed(4)}, Lon: ${pos.coords.longitude.toFixed(4)}`
-          }));
-        },
-        () => setError('Could not access device location')
-      );
+  const [isLocating, setIsLocating] = useState(false);
+
+  const handleUseLocation = async () => {
+    setIsLocating(true);
+    setError('');
+    try {
+      const loc = await detectUserLocation();
+      setFormData(prev => ({
+        ...prev,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        address_text: loc.address || `Lat: ${loc.latitude.toFixed(4)}, Lon: ${loc.longitude.toFixed(4)}`
+      }));
+    } catch {
+      setError('Could not access device location. Please enter coordinates manually.');
+    } finally {
+      setIsLocating(false);
     }
   };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();

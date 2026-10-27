@@ -1,41 +1,185 @@
-# NeighborLend - Architecture & Class Diagram
+# NeighborLend - Architecture & System Documentation
 
-This document provides a clear overview of the file architecture and the core business logic classes (database models) used in the NeighborLend application, following standard UML guidelines. 
-
-## 1. File Architecture
-
-The project is structured as a modern full-stack web application with a clear separation of concerns.
-
-### Frontend (`/frontend`)
-Built with React and Vite.
-- **`src/api/`**: Contains `client.js` for Axios configuration and interceptors to communicate with the backend.
-- **`src/components/`**: Reusable UI components (e.g., `Navbar.jsx`, `ListingCard.jsx`, `Footer.jsx`).
-- **`src/context/`**: React Context providers for global state management (e.g., `AuthContext.jsx`).
-- **`src/pages/`**: Top-level page components representing routes (e.g., `Home.jsx`, `Browse.jsx`, `CreateListing.jsx`, `Register.jsx`).
-- **`src/design/`**: Global stylesheets and CSS variables.
-
-### Backend (`/backend`)
-Built with Python and FastAPI.
-- **`app/models.py`**: SQLAlchemy ORM models defining the database schema and relationships (the core classes of our system).
-- **`app/schemas/`**: Pydantic models for data validation, serialization, and deserialization (API request/response payloads).
-- **`app/routers/`**: FastAPI route handlers defining the API endpoints (e.g., `auth.py`, `listings.py`, `uploads.py`).
-- **`app/services/`**: Business logic, external integrations, and ML services (e.g., `ml_service.py`, `storage_service.py`).
-- **`app/database.py`**: Database connection setup and session management.
-- **`ai_service/`**: Contains the YOLO ML models (`best_model.pt`) used for image object detection.
+NeighborLend is a community-driven peer-to-peer item sharing and rental platform built with FastAPI, React (Vite), SQLAlchemy, and an integrated YOLO object detection service for AI-assisted listing verification. It includes dynamic price suggestions, location-based distance calculations, and an in-app chat and rental negotiation engine.
 
 ---
 
-## 2. UML Class Diagram
+## 1. Local Development Setup
 
-The following class diagram illustrates the core entities of the application based on our backend database models (`app/models.py`), adhering to standard UML guidelines.
+### Clone the repository
 
-### Class Diagram Details
-- **Classes** contain attributes and their data types.
-- **`+`** denotes public attributes (accessible publicly).
-- **`-`** denotes private attributes (internal to the class/system, such as IDs or password hashes).
-- **Association**: `User` is associated with `BorrowRequest` (A user places a borrow request).
-- **Composition**: `Listing` has a composition relationship with `ListingPhoto`. A photo cannot exist without its parent listing (represented by a filled diamond in UML, `*--` in Mermaid).
-- **Aggregation / Association**: `User` owns a `Listing` (A listing belongs to a user, represented by an empty diamond or standard association).
+```bash
+git clone https://github.com/aviraj1576/NeighborLend.git
+cd NeighborLend
+```
+
+### Prerequisites
+- **Python 3.10+**
+- **Node.js 18+ & npm**
+- **Git**
+
+Open two terminal windows (PowerShell or Bash) from the project directory.
+
+---
+
+### Backend Setup
+
+You can run the backend from either the repository root (`NeighborLend/`) or the `backend/` directory.
+
+#### Option A: Running from the repository root (`NeighborLend/`)
+```powershell
+# Activate virtual environment
+.\venv\Scripts\Activate.ps1
+
+# Ensure Python discovers the backend package
+$env:PYTHONPATH="backend"
+
+# Start the development server
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+#### Option B: Running from `backend/`
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+- **Interactive API Documentation (Swagger)**: `http://localhost:8000/docs`
+- **ReDoc Documentation**: `http://localhost:8000/redoc`
+- **Health Check Endpoint**: `http://localhost:8000/api/health`
+
+#### Database & Seeding
+The database tables are created automatically on startup.
+- **SQLite (Default)**: Creates `neighborlend.db` locally.
+- **Supabase / PostgreSQL**: Set `DATABASE_URL` in `.env` to connect to Supabase PostgreSQL.
+- **Sample Data**: To seed mock accounts and listings, run:
+  ```powershell
+  cd backend
+  python seed_data.py
+  ```
+  > [!WARNING]
+  > Running `seed_data.py` drops and recreates all database tables. Do not run it in production.
+
+Sample test accounts generated after seeding:
+| Role | Email | Password |
+|---|---|---|
+| User (Alice) | `alice@example.com` | `password123` |
+| User (Bob) | `bob@example.com` | `password123` |
+| Administrator | `admin@example.com` | `admin123` |
+
+---
+
+### Frontend Setup
+
+In a second terminal window:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+- **Web Application**: `http://localhost:5173`
+- The frontend connects to the backend API specified by `VITE_API_BASE_URL` (defaults to `http://localhost:8000/api`).
+
+---
+
+## 2. Configuration & Environment Variables
+
+Copy or edit the `.env` file in the project root:
+
+```env
+# Database connection string (SQLite or Supabase PostgreSQL)
+DATABASE_URL=sqlite:///./neighborlend.db
+
+# Authentication
+JWT_SECRET=your-secure-random-secret-key
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=10080
+
+# File Storage & URLs
+UPLOAD_DIR=./uploads
+PUBLIC_BASE_URL=http://localhost:8000
+
+# AI Verification
+AI_MODEL_PATH=./ai_service/best_model/best.pt
+AI_CONFIDENCE_THRESHOLD=0.45
+
+# Mock Payments & CORS
+MOCK_PAYMENTS=true
+CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174
+ADMIN_EMAILS=admin@neighborlend.com
+
+# Optional: Supabase Storage Integration
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+> [!NOTE]
+> File uploads automatically resolve to the backend uploads directory regardless of the current working directory from which uvicorn is launched, preventing static file 404 errors. If Supabase credentials are configured, uploads are stored directly in Supabase Storage.
+
+---
+
+## 3. Project Architecture
+
+The application follows a decoupled full-stack architecture with modular backend services and reactive frontend components.
+
+```
+NeighborLend/
+├── backend/
+│   ├── ai_service/             # YOLO object detection models and weights
+│   ├── app/
+│   │   ├── models.py           # SQLAlchemy database models
+│   │   ├── database.py         # DB engine & session setup
+│   │   ├── config.py           # Settings management via Pydantic
+│   │   ├── main.py             # FastAPI entrypoint & static mounts
+│   │   ├── routers/
+│   │   │   ├── auth.py         # Login, registration, token refresh
+│   │   │   ├── listings.py     # Listing CRUD, distance filtering, pricing
+│   │   │   ├── borrow_requests.py # Borrow requests lifecycle
+│   │   │   ├── chat.py         # Chat messaging & rental negotiations
+│   │   │   ├── ai.py           # Item categorization & verification
+│   │   │   └── uploads.py      # Image uploads & ML object detection
+│   │   ├── schemas/            # Pydantic schemas (request/response validation)
+│   │   └── services/           # Core domain logic
+│   │       ├── auth.py         # Password hashing & JWT helpers
+│   │       ├── ml_service.py   # YOLO vision model inference
+│   │       ├── negotiation.py  # Offer validation & counter-offer workflows
+│   │       ├── pricing.py      # Algorithmic price suggestion
+│   │       └── storage_service.py # Local / Supabase storage handling
+│   ├── uploads/                # Local uploaded listing images
+│   └── seed_data.py            # Development database seed script
+│
+├── frontend/
+│   ├── src/
+│   │   ├── api/                # Axios instance with auth interceptors
+│   │   ├── components/         # Reusable UI widgets (Navbar, ListingCard)
+│   │   ├── context/            # Global state (AuthContext)
+│   │   ├── design/             # Theme tokens and global stylesheets
+│   │   ├── utils/              # Shared helpers (location detection)
+│   │   ├── pages/
+│   │   │   ├── Browse.jsx      # Geo-search and category filter
+│   │   │   ├── Chat.jsx        # Real-time negotiation & message thread
+│   │   │   ├── CreateListing.jsx # AI-assisted photo upload & listing form
+│   │   │   ├── CreateBorrowRequest.jsx # Custom request creation
+│   │   │   ├── ListingDetail.jsx # Item specs, lender info, offer trigger
+│   │   │   ├── MyListings.jsx  # Inventory management
+│   │   │   ├── Login.jsx & Register.jsx # Authentication views
+│   │   │   └── Landing.jsx     # Landing page
+│   └── package.json
+└── README.md
+```
+
+For a route-by-route guide to the frontend, reusable components, shared state, and styles—including how the listing category badge gets its value—see [the frontend component and category badge explanation](./docs/category-badge-explanation.md).
+
+---
+
+## 4. UML Class Diagram
+
+The following UML diagram models the primary entities and relationships across the platform, including the rental negotiation and messaging system.
 
 ```mermaid
 classDiagram
@@ -58,6 +202,7 @@ classDiagram
 
     class Listing {
         -String id
+        +String owner_id
         +String name
         +String category
         +Text description
@@ -80,6 +225,7 @@ classDiagram
 
     class ListingPhoto {
         -String id
+        +String listing_id
         +String url
         +Boolean is_cover
         +DateTime created_at
@@ -87,6 +233,7 @@ classDiagram
 
     class BorrowRequest {
         -String id
+        +String borrower_id
         +String title
         +String category
         +Text description
@@ -98,6 +245,42 @@ classDiagram
         +Float radius_km
         +String address_text
         +BorrowRequestStatus status
+        +String listing_id
+        +Float total_cost
+        +DateTime created_at
+        +DateTime updated_at
+    }
+
+    class Conversation {
+        -String id
+        +String listing_id
+        +String borrower_id
+        +String lender_id
+        +DateTime created_at
+        +DateTime updated_at
+    }
+
+    class Message {
+        -String id
+        +String conversation_id
+        +String sender_id
+        +Text content
+        +Boolean is_system
+        +DateTime created_at
+    }
+
+    class NegotiationOffer {
+        -String id
+        +String conversation_id
+        +String sender_id
+        +Float daily_price
+        +DateTime start_date
+        +DateTime end_date
+        +Float total_cost
+        +Text message
+        +OfferStatus status
+        +String parent_offer_id
+        +String borrow_request_id
         +DateTime created_at
         +DateTime updated_at
     }
@@ -120,21 +303,51 @@ classDiagram
         cancelled
     }
 
+    class OfferStatus {
+        <<enumeration>>
+        pending
+        accepted
+        rejected
+        countered
+        cancelled
+    }
+
     %% Relationships
     User "1" --> "*" Listing : owns
     User "1" --> "*" BorrowRequest : places
+    User "1" --> "*" Message : sends
+    User "1" --> "*" NegotiationOffer : creates
+    User "1" --> "*" Conversation : participates
 
-    %% Composition (Listing owns ListingPhoto, if listing deleted, photos deleted)
     Listing "1" *-- "*" ListingPhoto : contains
+    Listing "1" --> "*" Conversation : referenced_in
 
-    %% Enums dependencies
+    Conversation "1" *-- "*" Message : contains
+    Conversation "1" *-- "*" NegotiationOffer : contains
+
+    NegotiationOffer "0..1" --> "1" NegotiationOffer : counters (parent_offer)
+    NegotiationOffer "0..1" --> "0..1" BorrowRequest : linked_to
+
     Listing ..> ListingStatus : uses
     BorrowRequest ..> BorrowRequestStatus : uses
+    NegotiationOffer ..> OfferStatus : uses
 ```
 
-### Explanation of the UML Class Architecture
+### Explanation of Core Entities
 
-1. **User**: The central entity representing a registered user on the platform. It holds both authentication data (private) and public profile metrics (`trust_score`, `avg_rating`).
-2. **Listing**: Represents an item available for rent. It is associated with a specific `User` (the owner). It relies on the `ListingStatus` enumeration to track its lifecycle.
-3. **ListingPhoto**: Represents images uploaded for a listing. It has a **Composition** relationship with `Listing`, meaning that if a `Listing` is deleted, its associated `ListingPhoto` objects are also destroyed (handled via cascade delete).
-4. **BorrowRequest**: Represents a user's request to borrow an item they couldn't find in the listings. It is associated with the `User` (the borrower) and utilizes the `BorrowRequestStatus` enumeration.
+1. **User**: Represents a member of the community. Maintains trust metrics (`trust_score`, `avg_rating`, `disputes_against_count`) and owns listings, borrow requests, and conversation threads.
+2. **Listing & ListingPhoto**: Represents an item available for community lending. It links to multiple photos (composition relationship). When an image is uploaded, YOLO object detection validates category and tags.
+3. **BorrowRequest**: Allows community members to broadcast requests for items not currently listed, matching nearby lenders.
+4. **Conversation**: Manages real-time threads anchored to a specific item between a borrower and a lender.
+5. **NegotiationOffer**: Represents rental agreements under active negotiation. Tracks rental dates, negotiated daily rates, computed total cost, and negotiation state (`pending`, `accepted`, `rejected`, `countered`, `cancelled`).
+6. **Message**: Contextual discussion and automated system notifications within a conversation.
+
+---
+
+## 5. Key System Capabilities
+
+- **AI-Powered Item Verification**: Automatically tags and verifies uploaded images using a custom-trained YOLO model (`ultralytics`), suggesting labels and confidence scores before publishing.
+- **Dynamic Price Recommendation**: Suggests realistic daily rental prices based on the item category, original purchase price, and years owned.
+- **Geospatial Proximity Search**: Uses the Haversine formula to filter and sort available listings by distance from the borrower's coordinates.
+- **In-App Negotiation & Counter-Offers**: Structured negotiation engine allowing borrowers and lenders to propose, counter, accept, or decline daily rates and rental date windows directly within the chat interface.
+- **Resilient Multi-Target Storage**: Supports local filesystem storage with working-directory-independent paths and seamless failover/switch to cloud-based Supabase Storage buckets.

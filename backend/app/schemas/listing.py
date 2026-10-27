@@ -79,12 +79,32 @@ class ListingOut(BaseModel):
         from_attributes = True
 
 class SuggestPriceIn(BaseModel):
-    category: str
-    years_owned: float = 0
-    price_bought: float = 0
+    purchase_price: Optional[float] = None
+    original_price: Optional[float] = None
+    price_bought: Optional[float] = None
+    age_years: Optional[float] = None
+    item_age: Optional[float] = None
+    years_owned: Optional[float] = None
+    category: Optional[str] = "Other"
+
+    def get_purchase_price(self) -> float:
+        for val in (self.purchase_price, self.original_price, self.price_bought):
+            if val is not None:
+                return float(val)
+        return 0.0
+
+    def get_age_years(self) -> float:
+        for val in (self.age_years, self.item_age, self.years_owned):
+            if val is not None:
+                return float(val)
+        return 0.0
 
 class SuggestPriceOut(BaseModel):
+    current_value: float
+    daily_rent: float
+    security_deposit: float
     suggested_price_per_day: float
     current_value_estimate: float
-    daily_rate_used: float
-    explanation: str
+    daily_rate_used: float = 0.04
+    explanation: str = ""
+

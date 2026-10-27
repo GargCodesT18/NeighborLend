@@ -1,12 +1,12 @@
 import math
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, Listing, ListingPhoto, ListingStatus
 from app.schemas.listing import ListingCreateIn, ListingUpdateIn, ListingOut, SuggestPriceIn, SuggestPriceOut
 from app.services.auth import get_current_user
-from app.services.pricing import suggest_price_per_day
+from app.services.pricing import suggest_price_per_day, calculate_rental_suggestion
 
 router = APIRouter()
 
@@ -101,34 +101,80 @@ def list_my_listings(current_user: User = Depends(get_current_user), db: Session
     listings = db.query(Listing).filter(Listing.owner_id == current_user.id, Listing.status != ListingStatus.removed).all()
     return [_format_listing_out(l) for l in listings]
 
+@router.get("/detect-location")
+def detect_location(request: Request):
+    """
+    Attempts to detect location based on client IP or falls back to default coordinates.
+    """
+    import urllib.request
+    import json
+
+    client_ip = request.client.host if request.client else ""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+
+    try:
+        url = f"https://ipapi.co/{client_ip}/json/" if client_ip and client_ip not in ("127.0.0.1", "::1", "localhost") else "https://ipapi.co/json/"
+        req = urllib.request.Request(url, headers={"User-Agent": "NeighborLend/1.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if "latitude" in data and "longitude" in data:
+                city = data.get("city") or "Local Area"
+                region = data.get("region") or ""
+                loc_name = f"{city}, {region}".strip(", ")
+                return {
+                    "latitude": float(data["latitude"]),
+                    "longitude": float(data["longitude"]),
+                    "city": city,
+                    "region": region,
+                    "address": loc_name or "Detected Location",
+                    "source": "ip"
+                }
+    except Exception:
+        pass
+
+    return {
+        "latitude": 28.6139,
+        "longitude": 77.2090,
+        "city": "New Delhi",
+        "region": "Delhi",
+        "address": "New Delhi, Delhi",
+        "source": "default"
+    }
+
 @router.get("/search", response_model=List[ListingOut])
 def search_listings(
-    lat: float = Query(..., description="Latitude for search center"),
-    lon: float = Query(..., description="Longitude for search center"),
-    radius_km: float = Query(50.0, description="Search radius in km"),
+    lat: Optional[float] = Query(None, description="Latitude for search center"),
+    lon: Optional[float] = Query(None, description="Longitude for search center"),
+    radius_km: Optional[float] = Query(None, description="Search radius in km. If null or >= 500, all distances included"),
     category: Optional[str] = None,
     q: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     query = db.query(Listing).filter(Listing.status == ListingStatus.published)
-    if category:
+    if category and category != "All":
         query = query.filter(Listing.category == category)
     if q:
         query = query.filter(Listing.name.ilike(f"%{q}%"))
         
     all_listings = query.all()
     results = []
+    has_coords = lat is not None and lon is not None
+    is_unlimited = radius_km is None or radius_km <= 0 or radius_km >= 500
+
     for l in all_listings:
-        if l.latitude is not None and l.longitude is not None:
+        if has_coords and l.latitude is not None and l.longitude is not None:
             dist = haversine(lat, lon, l.latitude, l.longitude)
-            if dist <= radius_km:
+            if is_unlimited or dist <= radius_km:
                 results.append((dist, l))
-        else:
+        elif is_unlimited or not has_coords:
             # Include items without location at the end of the results
             results.append((float('inf'), l))
                 
     results.sort(key=lambda x: x[0])
     return [_format_listing_out(l, dist) for dist, l in results]
+
 
 @router.get("/{listing_id}", response_model=ListingOut)
 def get_listing(listing_id: str, db: Session = Depends(get_db)):
@@ -162,4 +208,7 @@ def delete_listing(listing_id: str, current_user: User = Depends(get_current_use
 
 @router.post("/suggest-price", response_model=SuggestPriceOut)
 def suggest_price(data: SuggestPriceIn):
-    return suggest_price_per_day(data.category, data.years_owned, data.price_bought)
+    return calculate_rental_suggestion(
+        purchase_price=data.get_purchase_price(),
+        age_years=data.get_age_years()
+    )

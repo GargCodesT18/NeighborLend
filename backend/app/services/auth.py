@@ -8,12 +8,11 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
-from app.models import User
+from app.models import CaptchaChallenge, User
 
 settings = get_settings()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
-_captcha_store = {}
+CAPTCHA_TTL_MINUTES = 5
 
 def hash_password(password: str) -> str:
     pwd_bytes = password.encode('utf-8')
@@ -60,25 +59,55 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
         raise HTTPException(status_code=403, detail="Admin privileges required")
     return user
 
-def issue_captcha() -> dict:
+def issue_captcha(db: Session) -> dict:
     import random
+    now = datetime.utcnow()
+    db.query(CaptchaChallenge).filter(CaptchaChallenge.expires_at <= now).delete(
+        synchronize_session=False
+    )
     num1 = random.randint(1, 10)
     num2 = random.randint(1, 10)
     captcha_id = str(uuid.uuid4())
     question = f"{num1} + {num2} = ?"
-    answer = num1 + num2
-    _captcha_store[captcha_id] = answer
+    db.add(CaptchaChallenge(
+        id=captcha_id,
+        answer=num1 + num2,
+        expires_at=now + timedelta(minutes=CAPTCHA_TTL_MINUTES),
+    ))
+    db.commit()
     return {"captcha_id": captcha_id, "question": question}
 
-def verify_captcha(captcha_id: str, answer: Optional[Union[int, str]]) -> bool:
-    if captcha_id in _captcha_store:
-        correct_answer = _captcha_store.pop(captcha_id)
-        try:
-            return int(answer) == int(correct_answer)
-        except (ValueError, TypeError):
-            return False
-    return False
+def verify_captcha(
+    captcha_id: str,
+    answer: Optional[Union[int, str]],
+    db: Session,
+) -> bool:
+    challenge = (
+        db.query(CaptchaChallenge)
+        .filter(CaptchaChallenge.id == captcha_id)
+        .with_for_update()
+        .first()
+    )
+    if challenge is None:
+        return False
 
-def require_valid_captcha(captcha_id: str, answer: Optional[Union[int, str]]):
-    if not verify_captcha(captcha_id, answer):
+    is_valid = False
+    try:
+        is_valid = (
+            challenge.expires_at > datetime.utcnow()
+            and int(answer) == challenge.answer
+        )
+    except (ValueError, TypeError):
+        pass
+
+    db.delete(challenge)
+    db.commit()
+    return is_valid
+
+def require_valid_captcha(
+    captcha_id: str,
+    answer: Optional[Union[int, str]],
+    db: Session,
+):
+    if not verify_captcha(captcha_id, answer, db):
         raise HTTPException(status_code=400, detail="Invalid captcha")

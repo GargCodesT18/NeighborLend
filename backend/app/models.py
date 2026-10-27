@@ -41,6 +41,12 @@ class User(Base):
     listings = relationship("Listing", back_populates="owner", foreign_keys="Listing.owner_id")
     borrow_requests = relationship("BorrowRequest", back_populates="borrower", foreign_keys="BorrowRequest.borrower_id")
 
+class CaptchaChallenge(Base):
+    __tablename__ = "captcha_challenges"
+    id = Column(String, primary_key=True, default=_uuid)
+    answer = Column(Integer, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
 class Listing(Base):
     __tablename__ = "listings"
     id = Column(String, primary_key=True, default=_uuid)
@@ -90,6 +96,63 @@ class BorrowRequest(Base):
     radius_km = Column(Float, default=10)
     address_text = Column(String, default="")
     status = Column(Enum(BorrowRequestStatus), default=BorrowRequestStatus.open, index=True)
+    listing_id = Column(String, ForeignKey("listings.id"), nullable=True)
+    total_cost = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     borrower = relationship("User", back_populates="borrow_requests", foreign_keys=[borrower_id])
+    listing = relationship("Listing", foreign_keys=[listing_id])
+
+class OfferStatus(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+    rejected = "rejected"
+    countered = "countered"
+    cancelled = "cancelled"
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    id = Column(String, primary_key=True, default=_uuid)
+    listing_id = Column(String, ForeignKey("listings.id"), nullable=False, index=True)
+    borrower_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    lender_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    listing = relationship("Listing")
+    borrower = relationship("User", foreign_keys=[borrower_id])
+    lender = relationship("User", foreign_keys=[lender_id])
+    messages = relationship("Message", back_populates="conversation", order_by="Message.created_at", cascade="all, delete-orphan")
+    offers = relationship("NegotiationOffer", back_populates="conversation", order_by="NegotiationOffer.created_at", cascade="all, delete-orphan")
+
+class Message(Base):
+    __tablename__ = "messages"
+    id = Column(String, primary_key=True, default=_uuid)
+    conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False, index=True)
+    sender_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    is_system = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    conversation = relationship("Conversation", back_populates="messages")
+    sender = relationship("User")
+
+class NegotiationOffer(Base):
+    __tablename__ = "negotiation_offers"
+    id = Column(String, primary_key=True, default=_uuid)
+    conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False, index=True)
+    sender_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    daily_price = Column(Float, nullable=False)
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime, nullable=False)
+    total_cost = Column(Float, nullable=False)
+    message = Column(Text, nullable=True)
+    status = Column(Enum(OfferStatus), default=OfferStatus.pending, index=True)
+    parent_offer_id = Column(String, ForeignKey("negotiation_offers.id"), nullable=True)
+    borrow_request_id = Column(String, ForeignKey("borrow_requests.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    conversation = relationship("Conversation", back_populates="offers")
+    sender = relationship("User")
+    borrow_request = relationship("BorrowRequest")

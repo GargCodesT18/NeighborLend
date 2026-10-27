@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UploadCloud, CheckCircle2, Sparkles, MapPin, Search } from 'lucide-react';
+import { UploadCloud, CheckCircle2, Sparkles, MapPin, Search, Calculator, RotateCcw, Loader2, Compass } from 'lucide-react';
 import api from '../api/client';
+import { detectUserLocation } from '../utils/location';
 import './CreateListing.css';
 
 const CATEGORIES = ['Tools', 'Electronics', 'Sports', 'Party', 'Books', 'Other'];
@@ -23,8 +24,6 @@ const CreateListing = () => {
     title: '',
     category: 'Other',
     description: '',
-    years_owned: 1,
-    original_price: '',
     price_per_day: '',
     security_deposit: '',
     lat: 28.6139,
@@ -32,6 +31,15 @@ const CreateListing = () => {
     address: '',
     lending_radius: 5
   });
+
+  // Temporary Rule-Based Price Calculator state (never saved to database)
+  const [calcInputs, setCalcInputs] = useState({
+    purchase_price: '',
+    item_age: ''
+  });
+  const [suggestion, setSuggestion] = useState(null);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [calcError, setCalcError] = useState('');
 
   // Step 1: Handle File
   const handleFileDrop = (e) => {
@@ -87,17 +95,59 @@ const CreateListing = () => {
     }
   };
 
-  // Step 2: Handle Details
-  const handleGetPriceSuggestion = async () => {
-    setIsLoading(true);
+  // Step 2: Handle Details & Rule-Based Price Suggestion
+  const handleSuggestPrice = async () => {
+    const rawPrice = parseFloat(calcInputs.purchase_price);
+    const rawAge = calcInputs.item_age !== '' ? parseFloat(calcInputs.item_age) : 0;
+
+    if (isNaN(rawPrice) || rawPrice <= 0) {
+      setCalcError('Please enter a valid original purchase price (> ₹0).');
+      return;
+    }
+    if (isNaN(rawAge) || rawAge < 0) {
+      setCalcError('Item age must be 0 or greater.');
+      return;
+    }
+
+    setCalcError('');
+    setIsSuggesting(true);
+
     try {
-      // Mock API Suggest Price
-      await new Promise(r => setTimeout(r, 1000));
-      setFormData(prev => ({ ...prev, price_per_day: 150, security_deposit: 1000 }));
+      // Calculate via FastAPI backend endpoint
+      const res = await api.post('/listings/suggest-price', {
+        purchase_price: rawPrice,
+        age_years: rawAge
+      });
+      const data = res.data;
+      setSuggestion(data);
+      // Auto-populate form with suggested values; owner can freely edit them below
+      setFormData(prev => ({
+        ...prev,
+        price_per_day: data.daily_rent,
+        security_deposit: data.security_deposit
+      }));
     } catch (err) {
-      console.error(err);
+      console.warn('Backend suggest-price failed, evaluating client-side rule formula:', err);
+      // Rule-based fallback:
+      // Current value = purchase_price * (0.85 ** age_years)
+      // Daily rent = 4% of current value, rounded to nearest 5
+      // Refundable security deposit = 20% of current value, rounded to nearest 5
+      const currentVal = Math.round(rawPrice * Math.pow(0.85, rawAge) * 100) / 100;
+      const dailyRent = Math.round((currentVal * 0.04) / 5) * 5;
+      const deposit = Math.round((currentVal * 0.20) / 5) * 5;
+      const fallbackData = {
+        current_value: currentVal,
+        daily_rent: dailyRent,
+        security_deposit: deposit
+      };
+      setSuggestion(fallbackData);
+      setFormData(prev => ({
+        ...prev,
+        price_per_day: dailyRent,
+        security_deposit: deposit
+      }));
     } finally {
-      setIsLoading(false);
+      setIsSuggesting(false);
     }
   };
 
@@ -106,28 +156,39 @@ const CreateListing = () => {
   };
 
   // Step 3: Location & Submit
-  const handleGetLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        setFormData(prev => ({
-          ...prev,
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-          address: 'Current Location'
-        }));
-      });
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationNotice, setLocationNotice] = useState('');
+
+  const handleGetLocation = async () => {
+    setIsLocating(true);
+    setLocationNotice('');
+    try {
+      const loc = await detectUserLocation();
+      setFormData(prev => ({
+        ...prev,
+        lat: loc.latitude,
+        lon: loc.longitude,
+        address: prev.address && prev.address !== 'Current Location' ? prev.address : loc.address
+      }));
+      setLocationNotice(`📍 Located: ${loc.address} (${loc.method === 'gps' ? 'High-accuracy GPS' : 'Network/IP Geolocation'})`);
+    } catch (err) {
+      console.error('Failed to get location:', err);
+      setLocationNotice('Could not find location automatically. Please enter your address or coordinates.');
+    } finally {
+      setIsLocating(false);
     }
   };
 
   const handleSubmit = async () => {
     setIsLoading(true);
     try {
+      // Ephemeral feature: Do not save purchase price, item age, or estimated value to DB
       const payload = {
         name: formData.title,
         category: formData.category,
         description: formData.description,
-        years_owned: Number(formData.years_owned),
-        price_bought: Number(formData.original_price),
+        years_owned: 0,
+        price_bought: 0,
         price_per_day: Number(formData.price_per_day),
         security_deposit: Number(formData.security_deposit),
         lending_radius_km: Number(formData.lending_radius),
@@ -147,6 +208,7 @@ const CreateListing = () => {
       setIsLoading(false);
     }
   };
+
 
   return (
     <div className="create-listing-page container fade-in-up">
@@ -251,34 +313,172 @@ const CreateListing = () => {
                 <textarea name="description" value={formData.description} onChange={handleInputChange} rows={4} placeholder="Describe the condition, what's included, etc."></textarea>
               </div>
 
-              <div className="form-group">
-                <label>Original Purchase Price (₹)</label>
-                <input type="number" name="original_price" value={formData.original_price} onChange={handleInputChange} />
-              </div>
-              <div className="form-group">
-                <label>Years Owned</label>
-                <input type="number" name="years_owned" value={formData.years_owned} onChange={handleInputChange} />
-              </div>
-
+              {/* Rule-based Price Suggestion Calculator (Temporary / Ephemeral) */}
               <div className="form-group full-width price-suggestion-box glass">
                 <div className="box-header">
-                  <Sparkles size={20} className="text-accent" />
-                  <h4>Not sure how to price?</h4>
+                  <Calculator size={22} className="text-accent" />
+                  <div>
+                    <h4>Rental Price Calculator</h4>
+                    <p className="suggestion-subtitle">
+                      Calculate fair rental pricing based on item depreciation (formula-driven).
+                    </p>
+                  </div>
                 </div>
-                <button className="btn-outline" onClick={handleGetPriceSuggestion} disabled={isLoading}>
-                  {isLoading ? 'Calculating...' : 'Get AI Price Suggestion'}
-                </button>
+
+                <div className="price-inputs-grid">
+                  <div className="form-group">
+                    <label htmlFor="input-purchase-price">Original Purchase Price (₹)</label>
+                    <input 
+                      id="input-purchase-price"
+                      type="number" 
+                      min="0"
+                      step="any"
+                      placeholder="e.g. 10000"
+                      value={calcInputs.purchase_price} 
+                      onChange={(e) => {
+                        setCalcInputs(prev => ({ ...prev, purchase_price: e.target.value }));
+                        if (calcError) setCalcError('');
+                      }} 
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="input-item-age">Item Age (years)</label>
+                    <input 
+                      id="input-item-age"
+                      type="number" 
+                      min="0" 
+                      step="0.5"
+                      placeholder="e.g. 2"
+                      value={calcInputs.item_age} 
+                      onChange={(e) => {
+                        setCalcInputs(prev => ({ ...prev, item_age: e.target.value }));
+                        if (calcError) setCalcError('');
+                      }} 
+                    />
+                  </div>
+                </div>
+
+                {calcError && (
+                  <div className="price-calc-error">
+                    {calcError}
+                  </div>
+                )}
+
+                <div className="suggest-actions">
+                  <button 
+                    type="button"
+                    id="btn-suggest-price"
+                    className="btn-primary suggest-btn" 
+                    onClick={handleSuggestPrice} 
+                    disabled={isSuggesting}
+                  >
+                    <Sparkles size={18} />
+                    {isSuggesting ? 'Calculating...' : 'Suggest Price'}
+                  </button>
+                </div>
+
+                {/* Display All Three Calculated Values */}
+                {suggestion && (
+                  <div className="suggestion-results-container fade-in">
+                    <div className="results-header">
+                      <h5>Calculated Price Breakdown</h5>
+                      <span className="temporary-tag">Temporary calculation &bull; Not saved to DB</span>
+                    </div>
+
+                    <div className="suggestion-results-grid">
+                      {/* 1. Current Value */}
+                      <div className="suggestion-card current-value-card">
+                        <span className="card-label">Current Value</span>
+                        <div className="card-value">₹{Number(suggestion.current_value).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</div>
+                        <span className="card-formula">purchase_price &times; (0.85<sup>age</sup>)</span>
+                      </div>
+
+                      {/* 2. Daily Rent */}
+                      <div className="suggestion-card rent-card">
+                        <span className="card-label">Daily Rent</span>
+                        <div className="card-value">₹{suggestion.daily_rent}</div>
+                        <span className="card-formula">4% of current value (nearest ₹5)</span>
+                      </div>
+
+                      {/* 3. Refundable Security Deposit */}
+                      <div className="suggestion-card deposit-card">
+                        <span className="card-label">Refundable Security Deposit</span>
+                        <div className="card-value">₹{suggestion.security_deposit}</div>
+                        <span className="card-formula">20% of current value (nearest ₹5)</span>
+                      </div>
+                    </div>
+
+                    <div className="suggestion-applied-note">
+                      <CheckCircle2 size={16} className="text-success" />
+                      <span>Suggested daily rent & deposit applied below. You can edit them freely before publishing.</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Editable Rent & Deposit Inputs */}
+              <div className="form-group">
+                <div className="label-with-hint">
+                  <label htmlFor="input-price-per-day">Price per Day (₹) *</label>
+                  {suggestion && (
+                    Number(formData.price_per_day) === Number(suggestion.daily_rent) ? (
+                      <span className="badge-suggested">Suggested applied</span>
+                    ) : (
+                      <button 
+                        type="button" 
+                        className="reset-to-suggested-btn"
+                        onClick={() => setFormData(prev => ({ ...prev, price_per_day: suggestion.daily_rent }))}
+                        title="Reset to suggested price"
+                      >
+                        <RotateCcw size={12} /> Reset to ₹{suggestion.daily_rent}
+                      </button>
+                    )
+                  )}
+                </div>
+                <input 
+                  id="input-price-per-day"
+                  type="number" 
+                  name="price_per_day" 
+                  min="0"
+                  step="any"
+                  placeholder="e.g. 150"
+                  value={formData.price_per_day} 
+                  onChange={handleInputChange} 
+                  required
+                />
               </div>
 
               <div className="form-group">
-                <label>Price per Day (₹)</label>
-                <input type="number" name="price_per_day" value={formData.price_per_day} onChange={handleInputChange} />
-              </div>
-              <div className="form-group">
-                <label>Security Deposit (₹)</label>
-                <input type="number" name="security_deposit" value={formData.security_deposit} onChange={handleInputChange} />
+                <div className="label-with-hint">
+                  <label htmlFor="input-security-deposit">Security Deposit (₹)</label>
+                  {suggestion && (
+                    Number(formData.security_deposit) === Number(suggestion.security_deposit) ? (
+                      <span className="badge-suggested">Suggested applied</span>
+                    ) : (
+                      <button 
+                        type="button" 
+                        className="reset-to-suggested-btn"
+                        onClick={() => setFormData(prev => ({ ...prev, security_deposit: suggestion.security_deposit }))}
+                        title="Reset to suggested deposit"
+                      >
+                        <RotateCcw size={12} /> Reset to ₹{suggestion.security_deposit}
+                      </button>
+                    )
+                  )}
+                </div>
+                <input 
+                  id="input-security-deposit"
+                  type="number" 
+                  name="security_deposit" 
+                  min="0"
+                  step="any"
+                  placeholder="e.g. 1000"
+                  value={formData.security_deposit} 
+                  onChange={handleInputChange} 
+                />
               </div>
             </div>
+
 
             <div className="wizard-actions">
               <button className="btn-outline" onClick={() => setStep(1)}>Back</button>
@@ -296,11 +496,27 @@ const CreateListing = () => {
               <div className="form-group full-width">
                 <label>Pickup Address</label>
                 <div className="input-with-button">
-                  <input type="text" name="address" value={formData.address} onChange={handleInputChange} placeholder="Enter block/street name" />
-                  <button className="btn-outline icon-btn" onClick={handleGetLocation} title="Use My Location">
-                    <MapPin size={20} />
+                  <input 
+                    type="text" 
+                    name="address" 
+                    value={formData.address} 
+                    onChange={handleInputChange} 
+                    placeholder="Enter locality, colony, or click Find Location" 
+                  />
+                  <button 
+                    type="button"
+                    className="btn-primary locate-btn-styled" 
+                    onClick={handleGetLocation} 
+                    disabled={isLocating}
+                    title="Find My Location (GPS + Network)"
+                  >
+                    {isLocating ? <Loader2 size={18} className="animate-spin" /> : <Compass size={18} />}
+                    <span>{isLocating ? 'Locating...' : 'Use My GPS'}</span>
                   </button>
                 </div>
+                {locationNotice && (
+                  <span className="location-feedback-hint">{locationNotice}</span>
+                )}
               </div>
 
               <div className="form-group">
@@ -313,16 +529,26 @@ const CreateListing = () => {
               </div>
 
               <div className="form-group full-width">
-                <label>Lending Radius: {formData.lending_radius} km</label>
+                <div className="slider-label-row">
+                  <label>Lending Radius: <strong>{formData.lending_radius} km</strong></label>
+                  <span className="slider-badge">Borrowers within {formData.lending_radius} km can see and request this item</span>
+                </div>
                 <input 
                   type="range" 
                   name="lending_radius"
-                  min="1" max="20" 
+                  min="1" max="50" 
                   value={formData.lending_radius} 
                   onChange={handleInputChange}
                   className="full-width-slider"
                 />
+                <div className="radius-scale-markers">
+                  <span>1 km (Neighbourhood)</span>
+                  <span>10 km</span>
+                  <span>25 km</span>
+                  <span>50 km (City-wide)</span>
+                </div>
               </div>
+
 
             </div>
 

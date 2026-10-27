@@ -31,6 +31,7 @@ const Navbar = () => {
               <Link to="/create-listing" className={`nav-link ${isActive('/create-listing')}`}>Lend Item</Link>
               <Link to="/create-request" className={`nav-link ${isActive('/create-request')}`}>Request Item</Link>
               <Link to="/my-listings" className={`nav-link ${isActive('/my-listings')}`}>My Listings</Link>
+              <Link to="/messages" className={`nav-link ${isActive('/messages')}`}>Messages</Link>
             </>
           )}
         </div>
@@ -69,6 +70,7 @@ const Navbar = () => {
               <Link to="/create-listing" className={`nav-link ${isActive('/create-listing')}`} onClick={() => setMobileMenuOpen(false)}>Lend Item</Link>
               <Link to="/create-request" className={`nav-link ${isActive('/create-request')}`} onClick={() => setMobileMenuOpen(false)}>Request Item</Link>
               <Link to="/my-listings" className={`nav-link ${isActive('/my-listings')}`} onClick={() => setMobileMenuOpen(false)}>My Listings</Link>
+              <Link to="/messages" className={`nav-link ${isActive('/messages')}`} onClick={() => setMobileMenuOpen(false)}>Messages</Link>
               <div className="mobile-user">
                 <span>{user?.username}</span>
                 <button onClick={() => { handleLogout(); setMobileMenuOpen(false); }} className="btn-outline logout-btn">Logout</button>

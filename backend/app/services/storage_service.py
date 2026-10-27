@@ -32,7 +32,7 @@ def save_upload(file: UploadFile, subfolder: str = "") -> str:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error uploading to Supabase: {str(e)}")
     else:
-        upload_dir = os.path.join(settings.upload_dir, subfolder)
+        upload_dir = os.path.join(settings.upload_dir_abs, subfolder)
         os.makedirs(upload_dir, exist_ok=True)
         filepath = os.path.join(upload_dir, filename)
         
@@ -83,7 +83,7 @@ def save_upload_from_bytes(
             )
 
     else:
-        upload_dir = os.path.join(settings.upload_dir, subfolder)
+        upload_dir = os.path.join(settings.upload_dir_abs, subfolder)
         os.makedirs(upload_dir, exist_ok=True)
 
         filepath = os.path.join(upload_dir, filename)

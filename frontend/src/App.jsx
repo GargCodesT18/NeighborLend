@@ -9,6 +9,7 @@ import CreateListing from './pages/CreateListing';
 import CreateBorrowRequest from './pages/CreateBorrowRequest';
 import ListingDetail from './pages/ListingDetail';
 import MyListings from './pages/MyListings';
+import Chat from './pages/Chat';
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
@@ -52,6 +53,16 @@ function App() {
             <Route path="/my-listings" element={
               <ProtectedRoute>
                 <MyListings />
+              </ProtectedRoute>
+            } />
+            <Route path="/messages" element={
+              <ProtectedRoute>
+                <Chat />
+              </ProtectedRoute>
+            } />
+            <Route path="/messages/:conversationId" element={
+              <ProtectedRoute>
+                <Chat />
               </ProtectedRoute>
             } />
           </Routes>

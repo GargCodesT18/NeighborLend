@@ -8,12 +8,12 @@ from app.services.auth import issue_captcha, require_valid_captcha, hash_passwor
 router = APIRouter()
 
 @router.get("/captcha", response_model=CaptchaOut)
-def get_captcha():
-    return issue_captcha()
+def get_captcha(db: Session = Depends(get_db)):
+    return issue_captcha(db)
 
 @router.post("/register", response_model=TokenOut)
 def register(data: RegisterIn, db: Session = Depends(get_db)):
-    require_valid_captcha(data.captcha_id, data.captcha_answer)
+    require_valid_captcha(data.captcha_id, data.captcha_answer, db)
     
     if db.query(User).filter((User.username == data.username) | (User.email == data.email)).first():
         raise HTTPException(status_code=400, detail="Username or email already exists")

@@ -1,0 +1,11 @@
+--- schema ---
+users_columns ['id', 'name', 'username', 'email', 'phone', 'password_hash', 'avatar_url', 'trust_score', 'avg_rating', 'rating_count', 'completed_rentals_count', 'disputes_against_count', 'is_admin', 'created_at']
+user_row alice alice@example.com id_type character varying hash_len 60 hash_prefix $2b$
+user_row bob bob@example.com id_type character varying hash_len 60 hash_prefix $2b$
+user_row admin admin@example.com id_type character varying hash_len 60 hash_prefix $2b$
+--- frontend-shaped signup ---
+POST /api/auth/register 422
+{"detail":[{"type":"missing","loc":["body","name"],"msg":"Field required","input":{"username":"probeuser1","email":"probe1@example.com","password":"secret123","full_name":"Probe User"}},{"type":"missing","loc":["body","captcha_id"],"msg":"Field required","input":{"username":"probeuser1","email":"probe1@example.com","password":"secret123","full_name":"Probe User"}},{"type":"missing","loc":["body","captcha_answer"],"msg":"Field required","input":{"username":"probeuser1","email":"probe1@example.com","password":"secret123","full_name":"Probe User"}}]}
+--- schema-shaped signup missing captcha ---
+POST /api/auth/register 422
+{"detail":[{"type":"missing","loc":["body","captcha_id"],"msg":"Field required","input":{"name":"Probe User","username":"probeuser2","email":"probe2@example.com","password":"secret123"}},{"type":"missing","loc":["body","captcha_answer"],"msg":"Field required","input":{"name":"Probe User","username":"probeuser2","email":"probe2@example.com","password":"secret123"}}]}

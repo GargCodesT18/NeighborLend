@@ -9,3 +9,4 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.12
 Pillow==10.4.0
 supabase==2.32.0
+ultralytics

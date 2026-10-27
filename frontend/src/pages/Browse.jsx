@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, MapPin, SlidersHorizontal } from 'lucide-react';
+import { Search, MapPin, SlidersHorizontal, Loader2, Globe, Compass, ChevronDown } from 'lucide-react';
 import ListingCard from '../components/ListingCard';
 import api from '../api/client';
+import { detectUserLocation, POPULAR_LOCATIONS } from '../utils/location';
 import './Browse.css';
 
 const CATEGORIES = ['All', 'Tools', 'Electronics', 'Sports', 'Party', 'Books', 'Other'];
@@ -9,13 +10,16 @@ const CATEGORIES = ['All', 'Tools', 'Electronics', 'Sports', 'Party', 'Books', '
 const Browse = () => {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isLocating, setIsLocating] = useState(false);
   
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [category, setCategory] = useState('All');
-  const [radius, setRadius] = useState(10);
+  // Default radius 50 km or 100 for Any distance
+  const [radius, setRadius] = useState(50);
   const [location, setLocation] = useState({ lat: 28.6139, lon: 77.2090 }); // Default Delhi
-  const [locationName, setLocationName] = useState('New Delhi (Default)');
+  const [locationName, setLocationName] = useState('New Delhi (Default Hub)');
+  const [showLocationMenu, setShowLocationMenu] = useState(false);
 
   const fetchListings = async () => {
     setLoading(true);
@@ -25,7 +29,12 @@ const Browse = () => {
       if (category !== 'All') params.append('category', category);
       params.append('lat', location.lat);
       params.append('lon', location.lon);
-      params.append('radius_km', radius);
+      // If radius < 100, filter by distance; if >= 100, include any distance
+      if (radius < 100) {
+        params.append('radius_km', radius);
+      } else {
+        params.append('radius_km', 9999);
+      }
 
       const res = await api.get(`/listings/search?${params.toString()}`);
       setListings(res.data || []);
@@ -46,15 +55,24 @@ const Browse = () => {
     fetchListings();
   };
 
-  const getUserLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-        setLocationName('Current Location');
-      });
-    } else {
-      alert("Geolocation is not supported by this browser.");
+  const getUserLocation = async () => {
+    setIsLocating(true);
+    try {
+      const loc = await detectUserLocation();
+      setLocation({ lat: loc.latitude, lon: loc.longitude });
+      setLocationName(loc.address || loc.city || 'My Location');
+      // If user is far from Delhi items, suggest Any Distance or set radius to 100 if listings are 0
+    } catch (err) {
+      console.error('Failed to detect location:', err);
+    } finally {
+      setIsLocating(false);
     }
+  };
+
+  const handleSelectPresetLocation = (preset) => {
+    setLocation({ lat: preset.lat, lon: preset.lon });
+    setLocationName(preset.name);
+    setShowLocationMenu(false);
   };
 
   return (
@@ -90,22 +108,86 @@ const Browse = () => {
           </div>
 
           <div className="location-filters">
-            <div className="location-display" title={locationName}>
-              <MapPin size={16} />
-              <span className="truncate">{locationName}</span>
-              <button onClick={getUserLocation} className="use-location-btn">Use My Location</button>
+            {/* Location selector with GPS detect button */}
+            <div className="location-box glass">
+              <div className="location-info" onClick={() => setShowLocationMenu(!showLocationMenu)} title="Click to change location">
+                <MapPin size={16} className="text-accent" />
+                <span className="location-name truncate">{locationName}</span>
+                <ChevronDown size={14} className="dropdown-arrow" />
+              </div>
+
+              <button 
+                type="button"
+                onClick={getUserLocation} 
+                disabled={isLocating}
+                className="use-location-btn"
+                title="Detect my location using GPS & Network"
+              >
+                {isLocating ? <Loader2 size={14} className="animate-spin" /> : <Compass size={14} />}
+                <span>{isLocating ? 'Finding...' : 'Use GPS'}</span>
+              </button>
+
+              {/* Location Preset Dropdown Menu */}
+              {showLocationMenu && (
+                <div className="location-dropdown glass fade-in">
+                  <div className="dropdown-title">Choose Search Hub:</div>
+                  <button 
+                    type="button" 
+                    className="dropdown-item gps-item"
+                    onClick={() => { setShowLocationMenu(false); getUserLocation(); }}
+                  >
+                    <Compass size={14} /> Detect Current Location
+                  </button>
+                  <div className="dropdown-divider"></div>
+                  {POPULAR_LOCATIONS.map((loc) => (
+                    <button
+                      key={loc.name}
+                      type="button"
+                      className={`dropdown-item ${locationName === loc.name ? 'active' : ''}`}
+                      onClick={() => handleSelectPresetLocation(loc)}
+                    >
+                      {loc.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             
-            <div className="radius-filter">
-              <SlidersHorizontal size={16} />
-              <span>{radius} km</span>
+            {/* Enhanced Distance Slider */}
+            <div className="radius-control-card glass">
+              <div className="radius-top-bar">
+                <div className="radius-label">
+                  <SlidersHorizontal size={15} />
+                  <span>Distance:</span>
+                  <strong className="radius-value-highlight">
+                    {radius >= 100 ? 'Any distance (All)' : `Within ${radius} km`}
+                  </strong>
+                </div>
+              </div>
+
               <input 
                 type="range" 
-                min="1" max="50" 
+                min="5" 
+                max="100" 
+                step="5"
                 value={radius} 
                 onChange={(e) => setRadius(Number(e.target.value))}
                 className="radius-slider"
+                title={`Filter items within ${radius >= 100 ? 'all distances' : `${radius} km`}`}
               />
+
+              <div className="radius-preset-pills">
+                {[15, 30, 50, 100].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    className={`radius-pill ${radius === r ? 'active' : ''}`}
+                    onClick={() => setRadius(r)}
+                  >
+                    {r === 100 ? 'Any' : `${r}km`}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -114,8 +196,13 @@ const Browse = () => {
       {/* Results */}
       <section className="results-section">
         <div className="results-header">
-          <h2>Items near you {category !== 'All' && `in ${category}`}</h2>
-          <span className="results-count">{listings.length} results</span>
+          <div>
+            <h2>Items near you {category !== 'All' && `in ${category}`}</h2>
+            <p className="search-summary-text">
+              Showing items {radius >= 100 ? 'at all distances' : `within ${radius} km`} from <strong>{locationName}</strong>
+            </p>
+          </div>
+          <span className="results-count">{listings.length} item{listings.length !== 1 ? 's' : ''} found</span>
         </div>
 
         {loading ? (
@@ -135,8 +222,36 @@ const Browse = () => {
             <div className="empty-icon-wrapper">
               <Search size={48} />
             </div>
-            <h3>No items found</h3>
-            <p>Try expanding your search radius or changing the category.</p>
+            <h3>No items within {radius >= 100 ? 'this search' : `${radius} km`}</h3>
+            <p>
+              {radius < 100 
+                ? `No available items were found within ${radius} km of ${locationName}. Try increasing your distance range or exploring all locations.` 
+                : 'No items match your category or search term. Try resetting your search filters.'}
+            </p>
+            <div className="empty-actions">
+              {radius < 100 && (
+                <button 
+                  type="button"
+                  className="btn-primary" 
+                  onClick={() => setRadius(100)}
+                >
+                  <Globe size={16} /> Expand to Any Distance (All items)
+                </button>
+              )}
+              {locationName !== 'New Delhi (Default Hub)' && (
+                <button 
+                  type="button"
+                  className="btn-outline" 
+                  onClick={() => {
+                    setLocation({ lat: 28.6139, lon: 77.2090 });
+                    setLocationName('New Delhi (Default Hub)');
+                    setRadius(50);
+                  }}
+                >
+                  View New Delhi Hub Items
+                </button>
+              )}
+            </div>
           </div>
         )}
       </section>
@@ -145,3 +260,4 @@ const Browse = () => {
 };
 
 export default Browse;
+

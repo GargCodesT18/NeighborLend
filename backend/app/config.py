@@ -4,6 +4,9 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+# The backend package lives one level below BASE_DIR
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=BASE_DIR/".env", extra="ignore")
@@ -29,6 +32,23 @@ class Settings(BaseSettings):
     @property
     def admin_email_list(self) -> list[str]:
         return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
+
+    @property
+    def upload_dir_abs(self) -> str:
+        """
+        Always returns an absolute path to the uploads directory, regardless
+        of the working directory uvicorn/gunicorn is launched from.
+
+        If upload_dir is already absolute, it is used as-is.
+        If it is relative (e.g. './uploads'), it is resolved relative to the
+        backend package root (the directory that contains app/) so that
+        launching uvicorn from the project root, the backend dir, or anywhere
+        else all produce the same resolved path.
+        """
+        p = Path(self.upload_dir)
+        if p.is_absolute():
+            return str(p)
+        return str((BACKEND_DIR / self.upload_dir).resolve())
 
 
 @lru_cache
