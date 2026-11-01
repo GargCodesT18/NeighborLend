@@ -1,6 +1,6 @@
-from pathlib import Path
+from app.config import get_settings
 
-MODEL_PATH = Path(__file__).resolve().parents[2] / "ai_service" / "best_model.pt"
+MODEL_PATH = get_settings().ai_model_path_abs
 
 _model = None
 _model_loaded = False

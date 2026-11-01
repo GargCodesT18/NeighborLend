@@ -109,3 +109,18 @@
   font-size: 14px;
   margin-bottom: 20px;
 }
+
+@media (max-width: 600px) {
+  .create-request-page {
+    padding: 32px 16px 48px;
+  }
+
+  .request-card {
+    padding: 24px 20px;
+  }
+
+  .location-section {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}

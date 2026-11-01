@@ -94,6 +94,8 @@
 }
 
 @media (max-width: 480px) {
+  .register-page { padding: 24px 16px; }
+  .register-container { padding: 28px 20px; }
   .form-row {
     flex-direction: column;
     gap: 20px;

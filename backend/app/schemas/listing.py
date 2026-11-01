@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models import ListingStatus
 
 class ListingCreateIn(BaseModel):
@@ -75,8 +75,7 @@ class ListingOut(BaseModel):
     distance_km: Optional[float] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SuggestPriceIn(BaseModel):
     purchase_price: Optional[float] = None

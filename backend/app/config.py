@@ -12,12 +12,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=BASE_DIR/".env", extra="ignore")
 
     database_url: str = "sqlite:///./neighborlend.db"
+    app_env: str = "development"
     jwt_secret: str = "neighborlend-super-secret-key-2026-prototype"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7
     upload_dir: str = "./uploads"
     public_base_url: str = "http://localhost:8000"
-    ai_model_path: str = "./ai_service/best_model/best.pt"
+    ai_model_path: str = "./ai_service/best_model.pt"
     ai_confidence_threshold: float = 0.45
     mock_payments: bool = True
     cors_origins: str = "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174"
@@ -56,6 +57,13 @@ class Settings(BaseSettings):
         if p.is_absolute():
             return str(p)
         return str((BACKEND_DIR / self.upload_dir).resolve())
+
+    @property
+    def ai_model_path_abs(self) -> str:
+        path = Path(self.ai_model_path)
+        if path.is_absolute():
+            return str(path)
+        return str((BACKEND_DIR / path).resolve())
 
 
 @lru_cache

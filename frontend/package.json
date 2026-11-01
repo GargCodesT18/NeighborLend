@@ -6,9 +6,20 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:web": "node scripts/check-web-env.mjs && vite build",
+    "build:mobile": "node scripts/check-mobile-env.mjs && vite build --mode mobile",
+    "assets:android": "node scripts/run-capacitor-assets.cjs generate --android --assetPath assets --iconBackgroundColor #0b1220 --iconBackgroundColorDark #0b1220 --splashBackgroundColor #0b1220 --splashBackgroundColorDark #0b1220",
+    "cap:add:android": "node scripts/run-capacitor.cjs add android",
+    "cap:sync:android": "node scripts/run-capacitor.cjs sync android",
+    "cap:open:android": "node scripts/run-capacitor.cjs open android",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capgo/capacitor-social-login": "^8.7.5",
     "axios": "^1.7.7",
     "lucide-react": "^0.446.0",
     "react": "^18.3.1",
@@ -16,6 +27,7 @@
     "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
     "@types/react": "^18.3.8",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^6.1.2",

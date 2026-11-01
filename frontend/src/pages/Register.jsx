@@ -21,6 +21,25 @@ const Register = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
 
+  const getRegistrationError = (err) => {
+    const detail = err.response?.data?.detail;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+    if (Array.isArray(detail)) {
+      const messages = detail
+        .map((item) => (typeof item === 'string' ? item : item?.msg || item?.message))
+        .filter(Boolean);
+      if (messages.length) return messages.join('. ');
+    }
+    if (detail && typeof detail === 'object') {
+      if (typeof detail.message === 'string') return detail.message;
+      if (typeof detail.msg === 'string') return detail.msg;
+    }
+    if (err.response?.status === 503) {
+      return 'The verification email could not be sent. Check your Brevo SMTP settings and try again.';
+    }
+    return 'Failed to register. Please check your details and try again.';
+  };
+
   const fetchCaptcha = async () => {
     try {
       const res = await api.get('/auth/captcha');
@@ -74,11 +93,8 @@ const Register = () => {
       await register(registerData);
       navigate(`/verify-email?email=${encodeURIComponent(formData.email)}`);
     } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-        'Failed to register. Please try again.'
-      );
-      fetchCaptcha();
+      setError(getRegistrationError(err));
+      await fetchCaptcha();
     } finally {
       setIsLoading(false);
     }

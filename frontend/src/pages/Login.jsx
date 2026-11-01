@@ -1,7 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { SocialLogin } from '@capgo/capacitor-social-login';
 import { useAuth } from '../context/AuthContext';
 import './Login.css';
+
+let nativeGoogleInitialization;
 
 const Login = () => {
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -10,12 +14,24 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [nativeGoogleReady, setNativeGoogleReady] = useState(false);
   const { login, googleLogin } = useAuth();
   const navigate = useNavigate();
   const googleButtonRef = useRef(null);
+  const nativeGoogleInit = useRef(null);
+  const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
     if (!googleClientId) return undefined;
+
+    if (isNative) {
+      nativeGoogleInitialization ||= SocialLogin.initialize({ google: { webClientId: googleClientId } });
+      nativeGoogleInit.current = nativeGoogleInitialization;
+      nativeGoogleInit.current
+        .then(() => setNativeGoogleReady(true))
+        .catch(() => setError('Google Sign-In could not be initialized on this device.'));
+      return undefined;
+    }
 
     const mountGoogleButton = () => {
       if (!window.google?.accounts?.id || !googleButtonRef.current) return false;
@@ -49,7 +65,26 @@ const Login = () => {
       if (mountGoogleButton()) window.clearInterval(intervalId);
     }, 250);
     return () => window.clearInterval(intervalId);
-  }, [googleClientId, googleLogin, navigate]);
+  }, [googleClientId, googleLogin, navigate, isNative]);
+
+  const handleNativeGoogleLogin = async () => {
+    setError('');
+    setIsLoading(true);
+    try {
+      await nativeGoogleInit.current;
+      const response = await SocialLogin.login({ provider: 'google', options: { scopes: ['email', 'profile'] } });
+      const credential = response.result?.idToken;
+      if (!credential) throw new Error('Google did not return an ID token.');
+      await googleLogin(credential);
+      navigate('/browse');
+    } catch (err) {
+      if (err.code !== 'USER_CANCELLED') {
+        setError(err.response?.data?.detail || err.message || 'Google Sign-In failed. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -120,7 +155,12 @@ const Login = () => {
         </form>
 
         <div className="login-divider"><span>or continue with</span></div>
-        {googleClientId ? (
+        {googleClientId && isNative ? (
+          <button type="button" className="google-signin-button native-google-signin" onClick={handleNativeGoogleLogin} disabled={isLoading || !nativeGoogleReady}>
+            <span className="google-signin-mark" aria-hidden="true">G</span>
+            {isLoading ? 'Connecting…' : 'Continue with Google'}
+          </button>
+        ) : googleClientId ? (
             <div className="google-signin" ref={googleButtonRef} />
         ) : (
           <div className="google-signin-unconfigured">

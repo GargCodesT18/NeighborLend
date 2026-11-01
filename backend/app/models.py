@@ -138,13 +138,11 @@ class OfferStatus(str, enum.Enum):
 class Conversation(Base):
     __tablename__ = "conversations"
     id = Column(String, primary_key=True, default=_uuid)
-    listing_id = Column(String, ForeignKey("listings.id"), nullable=False, index=True)
     borrower_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     lender_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    listing = relationship("Listing")
     borrower = relationship("User", foreign_keys=[borrower_id])
     lender = relationship("User", foreign_keys=[lender_id])
     messages = relationship("Message", back_populates="conversation", order_by="Message.created_at", cascade="all, delete-orphan")
@@ -166,6 +164,7 @@ class NegotiationOffer(Base):
     __tablename__ = "negotiation_offers"
     id = Column(String, primary_key=True, default=_uuid)
     conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False, index=True)
+    listing_id = Column(String, ForeignKey("listings.id"), nullable=True, index=True)
     sender_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     daily_price = Column(Float, nullable=False)
     start_date = Column(DateTime, nullable=False)
@@ -181,3 +180,4 @@ class NegotiationOffer(Base):
     conversation = relationship("Conversation", back_populates="offers")
     sender = relationship("User")
     borrow_request = relationship("BorrowRequest")
+    listing = relationship("Listing")

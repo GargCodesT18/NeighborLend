@@ -1,4 +1,5 @@
 import os
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +9,19 @@ from app.database import engine, Base, migrate_schema
 from app.routers import auth, listings, ai, uploads, borrow_requests, chat, notifications
 
 settings = get_settings()
+
+if settings.app_env.lower() in {"production", "prod"}:
+    if (
+        len(settings.jwt_secret) < 32
+        or settings.jwt_secret == "neighborlend-super-secret-key-2026-prototype"
+    ):
+        raise RuntimeError("Production requires a new JWT_SECRET with at least 32 characters.")
+    if not settings.database_url.startswith(("postgresql://", "postgresql+psycopg2://")):
+        raise RuntimeError("Production requires a PostgreSQL DATABASE_URL.")
+    if not (settings.supabase_url and settings.supabase_service_role_key):
+        logging.getLogger(__name__).warning(
+            "Supabase Storage is not configured; production uploads will use ephemeral local storage."
+        )
 
 # Create tables on startup (MVP - replace with Alembic later)
 Base.metadata.create_all(bind=engine)

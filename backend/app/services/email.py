@@ -1,8 +1,11 @@
 import smtplib
 import ssl
+import logging
 from email.message import EmailMessage
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def send_verification_code(recipient: str, code: str) -> None:
@@ -35,6 +38,14 @@ def send_verification_code(recipient: str, code: str) -> None:
                     server.starttls(context=ssl.create_default_context())
                 _send_message(server, message, settings.smtp_username, settings.smtp_password)
     except (OSError, smtplib.SMTPException) as exc:
+        # Log enough to distinguish credential, sender, and connection failures
+        # without exposing SMTP usernames, keys, sender addresses, or recipients.
+        response_code = getattr(exc, "smtp_code", None)
+        logger.warning(
+            "SMTP delivery failed (%s, response code=%s)",
+            type(exc).__name__,
+            response_code,
+        )
         raise RuntimeError("Unable to deliver the verification email") from exc
 
 

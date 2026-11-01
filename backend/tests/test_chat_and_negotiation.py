@@ -81,23 +81,25 @@ class TestChatAndNegotiation(unittest.TestCase):
         # Lender tries to start conversation on their own listing
         res = self.client.post(
             "/api/conversations",
-            json={"listing_id": self.listing.id, "initial_message": "Hello self"},
+            json={"lender_id": self.lender.id, "initial_message": "Hello self"},
             headers=self.lender_headers
         )
         self.assertEqual(res.status_code, 400)
-        self.assertIn("own listing", res.json()["detail"].lower())
+        self.assertIn("yourself", res.json()["detail"].lower())
 
     def test_02_create_conversation_and_send_message(self):
         # Borrower starts conversation
         res = self.client.post(
             "/api/conversations",
-            json={"listing_id": self.listing.id, "initial_message": "Hi, is this DSLR available this weekend?"},
+            json={"lender_id": self.lender.id, "initial_message": "Hi, is this DSLR available this weekend?"},
             headers=self.borrower_headers
         )
         self.assertEqual(res.status_code, 200)
         conv = res.json()
         self.__class__.conversation_id = conv["id"]
-        self.assertEqual(conv["listing_id"], self.listing.id)
+        self.assertEqual(conv["borrower"]["id"], self.borrower.id)
+        self.assertEqual(conv["lender"]["id"], self.lender.id)
+        self.assertNotIn("listing_id", conv)
         self.assertTrue(conv["is_borrower"])
         self.assertGreaterEqual(len(conv["messages"]), 1)
 
@@ -142,7 +144,7 @@ class TestChatAndNegotiation(unittest.TestCase):
         # 1. Invalid date order (end < start)
         res = self.client.post(
             f"/api/conversations/{self.conversation_id}/offers",
-            json={"daily_price": 400.0, "start_date": start, "end_date": invalid_end},
+            json={"listing_id": self.listing.id, "daily_price": 400.0, "start_date": start, "end_date": invalid_end},
             headers=self.borrower_headers
         )
         self.assertEqual(res.status_code, 400)
@@ -150,7 +152,7 @@ class TestChatAndNegotiation(unittest.TestCase):
         # 2. Daily price below minimum listing price (min is 350, offering 300)
         res = self.client.post(
             f"/api/conversations/{self.conversation_id}/offers",
-            json={"daily_price": 300.0, "start_date": start, "end_date": end},
+            json={"listing_id": self.listing.id, "daily_price": 300.0, "start_date": start, "end_date": end},
             headers=self.borrower_headers
         )
         self.assertEqual(res.status_code, 400)
@@ -160,6 +162,7 @@ class TestChatAndNegotiation(unittest.TestCase):
         res = self.client.post(
             f"/api/conversations/{self.conversation_id}/offers",
             json={
+                "listing_id": self.listing.id,
                 "daily_price": 400.0,
                 "start_date": start,
                 "end_date": end,
@@ -181,7 +184,7 @@ class TestChatAndNegotiation(unittest.TestCase):
 
         res_self = self.client.post(
             f"/api/offers/{self.initial_offer_id}/counter",
-            json={"daily_price": 420.0, "start_date": counter_start, "end_date": counter_end},
+            json={"listing_id": self.listing.id, "daily_price": 420.0, "start_date": counter_start, "end_date": counter_end},
             headers=self.borrower_headers
         )
         self.assertEqual(res_self.status_code, 400)
@@ -190,6 +193,7 @@ class TestChatAndNegotiation(unittest.TestCase):
         res = self.client.post(
             f"/api/offers/{self.initial_offer_id}/counter",
             json={
+                "listing_id": self.listing.id,
                 "daily_price": 450.0,
                 "start_date": counter_start,
                 "end_date": counter_end,
@@ -267,7 +271,7 @@ class TestChatAndNegotiation(unittest.TestCase):
         # Other borrower starts conversation
         c_res = self.client.post(
             "/api/conversations",
-            json={"listing_id": self.listing.id},
+            json={"lender_id": self.lender.id},
             headers=other_headers
         )
         other_conv_id = c_res.json()["id"]
@@ -278,7 +282,7 @@ class TestChatAndNegotiation(unittest.TestCase):
 
         res_conflict = self.client.post(
             f"/api/conversations/{other_conv_id}/offers",
-            json={"daily_price": 480.0, "start_date": conflict_start, "end_date": conflict_end},
+            json={"listing_id": self.listing.id, "daily_price": 480.0, "start_date": conflict_start, "end_date": conflict_end},
             headers=other_headers
         )
         self.assertEqual(res_conflict.status_code, 400)
@@ -300,7 +304,7 @@ class TestChatAndNegotiation(unittest.TestCase):
 
         c_res = self.client.post(
             "/api/conversations",
-            json={"listing_id": self.listing.id},
+            json={"lender_id": self.lender.id},
             headers=new_headers
         )
         conv_id = c_res.json()["id"]
@@ -310,7 +314,7 @@ class TestChatAndNegotiation(unittest.TestCase):
         end = (datetime.utcnow() + timedelta(days=12)).isoformat()
         off_res = self.client.post(
             f"/api/conversations/{conv_id}/offers",
-            json={"daily_price": 400.0, "start_date": start, "end_date": end},
+            json={"listing_id": self.listing.id, "daily_price": 400.0, "start_date": start, "end_date": end},
             headers=new_headers
         )
         self.assertEqual(off_res.status_code, 200)

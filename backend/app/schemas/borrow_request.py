@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.models import BorrowRequestStatus
 
 class BorrowRequestCreateIn(BaseModel):
@@ -44,5 +44,4 @@ class BorrowRequestOut(BaseModel):
     distance_km: Optional[float] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

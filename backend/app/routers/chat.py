@@ -12,7 +12,7 @@ from app.models import (
 from app.schemas.chat import (
     ConversationSummaryOut, ConversationDetailOut, ConversationCreateIn,
     MessageOut, MessageCreateIn, OfferOut, OfferCreateIn, OfferCounterIn,
-    ParticipantOut, ListingSummaryOut
+    ParticipantOut
 )
 from app.services.auth import get_current_user
 from app.services.notifications import create_notification
@@ -29,40 +29,6 @@ def _format_participant(user: Optional[User]) -> ParticipantOut:
         username=user.username,
         avatar_url=user.avatar_url,
         trust_score=user.trust_score if user.trust_score is not None else 50.0
-    )
-
-def _format_listing_summary(listing: Optional[Listing]) -> ListingSummaryOut:
-    if not listing:
-        return ListingSummaryOut(
-            id="",
-            name="Unknown Listing",
-            category="Other",
-            price_per_day=0.0,
-            min_price_per_day=None,
-            security_deposit=0.0,
-            status="removed",
-            photo_url=None,
-            owner_id=""
-        )
-    cover_photo = None
-    if listing.photos:
-        for p in listing.photos:
-            if getattr(p, "is_cover", False):
-                cover_photo = p.url
-                break
-        if not cover_photo:
-            cover_photo = listing.photos[0].url
-
-    return ListingSummaryOut(
-        id=listing.id,
-        name=listing.name,
-        category=listing.category,
-        price_per_day=listing.price_per_day,
-        min_price_per_day=listing.min_price_per_day,
-        security_deposit=listing.security_deposit or 0.0,
-        status=listing.status.value if hasattr(listing.status, "value") else str(listing.status),
-        photo_url=cover_photo,
-        owner_id=listing.owner_id
     )
 
 def _format_message(msg: Message) -> MessageOut:
@@ -85,6 +51,7 @@ def _format_offer(offer: NegotiationOffer) -> OfferOut:
     return OfferOut(
         id=offer.id,
         conversation_id=offer.conversation_id,
+        listing_id=offer.listing_id,
         sender_id=offer.sender_id,
         sender_name=sender_name,
         sender_username=sender_username,
@@ -113,7 +80,7 @@ def _get_active_offer(offers: List[NegotiationOffer]) -> Optional[NegotiationOff
 
 @router.get("/conversations", response_model=List[ConversationSummaryOut])
 def list_conversations(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """List all conversations for current user with listing info, last message, and active offer."""
+    """List conversations for current user with the other participant and latest activity."""
     conversations = (
         db.query(Conversation)
         .filter(or_(Conversation.borrower_id == current_user.id, Conversation.lender_id == current_user.id))
@@ -137,8 +104,6 @@ def list_conversations(current_user: User = Depends(get_current_user), db: Sessi
 
         results.append(ConversationSummaryOut(
             id=conv.id,
-            listing_id=conv.listing_id,
-            listing=_format_listing_summary(conv.listing),
             borrower=_format_participant(conv.borrower),
             lender=_format_participant(conv.lender),
             other_participant=_format_participant(other_user),
@@ -156,30 +121,27 @@ def create_or_get_conversation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create or retrieve a conversation for a listing."""
-    listing = db.query(Listing).filter(Listing.id == data.listing_id, Listing.status != ListingStatus.removed).first()
-    if not listing:
-        raise HTTPException(status_code=404, detail="Listing not found or unavailable")
-
-    if listing.owner_id == current_user.id:
-        raise HTTPException(status_code=400, detail="You cannot start a conversation on your own listing.")
+    """Create or retrieve a conversation with a lender."""
+    lender = db.query(User).filter(User.id == data.lender_id).first()
+    if not lender:
+        raise HTTPException(status_code=404, detail="User not found")
+    if lender.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot start a conversation with yourself.")
 
     # Check existing conversation
     conv = (
         db.query(Conversation)
         .filter(
-            Conversation.listing_id == listing.id,
             Conversation.borrower_id == current_user.id,
-            Conversation.lender_id == listing.owner_id
+            Conversation.lender_id == lender.id
         )
         .first()
     )
 
     if not conv:
         conv = Conversation(
-            listing_id=listing.id,
             borrower_id=current_user.id,
-            lender_id=listing.owner_id
+            lender_id=lender.id
         )
         db.add(conv)
         db.flush()
@@ -188,16 +150,16 @@ def create_or_get_conversation(
         sys_msg = Message(
             conversation_id=conv.id,
             sender_id=current_user.id,
-            content=f"Conversation started regarding '{listing.name}'.",
+            content=f"Conversation started with {lender.name}.",
             is_system=True
         )
         db.add(sys_msg)
         create_notification(
             db,
-            listing.owner_id,
+            lender.id,
             "borrowing_request",
             "New borrowing request",
-            f"{current_user.name} wants to borrow {listing.name}.",
+            f"{current_user.name} started a conversation with you.",
             f"/messages/{conv.id}",
         )
 
@@ -219,8 +181,6 @@ def create_or_get_conversation(
 
     return ConversationDetailOut(
         id=conv.id,
-        listing_id=conv.listing_id,
-        listing=_format_listing_summary(conv.listing),
         borrower=_format_participant(conv.borrower),
         lender=_format_participant(conv.lender),
         is_borrower=is_borrower,
@@ -237,7 +197,7 @@ def get_conversation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get full conversation details including messages, offers, and listing info."""
+    """Get full conversation details including messages and offers."""
     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -250,8 +210,6 @@ def get_conversation(
 
     return ConversationDetailOut(
         id=conv.id,
-        listing_id=conv.listing_id,
-        listing=_format_listing_summary(conv.listing),
         borrower=_format_participant(conv.borrower),
         lender=_format_participant(conv.lender),
         is_borrower=is_borrower,
@@ -345,6 +303,14 @@ def create_offer(
     if current_user.id not in (conv.borrower_id, conv.lender_id):
         raise HTTPException(status_code=403, detail="Not authorized to make offers in this conversation")
 
+    listing = db.query(Listing).filter(
+        Listing.id == data.listing_id,
+        Listing.owner_id == conv.lender_id,
+        Listing.status == ListingStatus.published,
+    ).first()
+    if not listing:
+        raise HTTPException(status_code=404, detail="Choose an available listing owned by this conversation's lender")
+
     # Date and duration validation
     try:
         days, total_cost = calculate_rental_duration_and_cost(data.daily_price, data.start_date, data.end_date)
@@ -352,15 +318,15 @@ def create_offer(
         raise HTTPException(status_code=400, detail=str(e))
 
     # Minimum price validation if listing owner configured one
-    if conv.listing and conv.listing.min_price_per_day is not None:
-        if data.daily_price < conv.listing.min_price_per_day:
+    if listing.min_price_per_day is not None:
+        if data.daily_price < listing.min_price_per_day:
             raise HTTPException(
                 status_code=400,
-                detail=f"Offer price ₹{data.daily_price} is below the lender's minimum price of ₹{conv.listing.min_price_per_day}/day."
+                detail=f"Offer price ₹{data.daily_price} is below the lender's minimum price of ₹{listing.min_price_per_day}/day."
             )
 
     # Check listing availability
-    is_avail, reason = check_listing_availability(db, conv.listing_id, data.start_date, data.end_date)
+    is_avail, reason = check_listing_availability(db, listing.id, data.start_date, data.end_date)
     if not is_avail:
         raise HTTPException(status_code=400, detail=reason)
 
@@ -371,6 +337,7 @@ def create_offer(
 
     offer = NegotiationOffer(
         conversation_id=conv.id,
+        listing_id=listing.id,
         sender_id=current_user.id,
         daily_price=data.daily_price,
         start_date=data.start_date,
@@ -401,7 +368,7 @@ def create_offer(
         recipient_id,
         "borrowing_request",
         "New borrowing request offer",
-        f"{current_user.name} sent a rental offer for {conv.listing.name if conv.listing else 'an item'}.",
+        f"{current_user.name} sent a rental offer for {listing.name}.",
         f"/messages/{conv.id}",
     )
 
@@ -437,7 +404,7 @@ def accept_offer(
         raise HTTPException(status_code=400, detail=f"Offer cannot be accepted because it is already '{offer.status.value}'.")
 
     # Recheck item availability
-    is_avail, reason = check_listing_availability(db, conv.listing_id, offer.start_date, offer.end_date, exclude_offer_id=offer.id)
+    is_avail, reason = check_listing_availability(db, offer.listing_id, offer.start_date, offer.end_date, exclude_offer_id=offer.id)
     if not is_avail:
         raise HTTPException(status_code=409, detail=f"Cannot accept offer: {reason}")
 
@@ -453,18 +420,18 @@ def accept_offer(
     # Integrate with BorrowRequest workflow
     borrow_req = BorrowRequest(
         borrower_id=conv.borrower_id,
-        listing_id=conv.listing_id,
-        title=f"Rental: {conv.listing.name if conv.listing else 'Item'}",
-        category=conv.listing.category if conv.listing else "Other",
+        listing_id=offer.listing_id,
+        title=f"Rental: {offer.listing.name if offer.listing else 'Item'}",
+        category=offer.listing.category if offer.listing else "Other",
         description=f"Negotiated and agreed via conversation. Agreed rate: ₹{offer.daily_price}/day.",
         max_price_per_day=offer.daily_price,
         needed_from=offer.start_date,
         needed_until=offer.end_date,
         total_cost=offer.total_cost,
-        latitude=conv.listing.latitude if conv.listing else None,
-        longitude=conv.listing.longitude if conv.listing else None,
-        radius_km=conv.listing.lending_radius_km if conv.listing else 10.0,
-        address_text=conv.listing.address_text if conv.listing else "",
+        latitude=offer.listing.latitude if offer.listing else None,
+        longitude=offer.listing.longitude if offer.listing else None,
+        radius_km=offer.listing.lending_radius_km if offer.listing else 10.0,
+        address_text=offer.listing.address_text if offer.listing else "",
         status=BorrowRequestStatus.open  # Open status preserves borrower/lender fulfillment workflow
     )
     db.add(borrow_req)
@@ -485,7 +452,7 @@ def accept_offer(
         offer.sender_id,
         "approval",
         "Rental offer approved",
-        f"{current_user.name} approved your offer for {conv.listing.name if conv.listing else 'an item'}.",
+        f"{current_user.name} approved your offer for {offer.listing.name if offer.listing else 'an item'}.",
         f"/messages/{conv.id}",
         borrow_req.id,
     )
@@ -512,6 +479,9 @@ def counter_offer(
     if not conv or current_user.id not in (conv.borrower_id, conv.lender_id):
         raise HTTPException(status_code=403, detail="Not authorized")
 
+    if data.listing_id != parent_offer.listing_id:
+        raise HTTPException(status_code=400, detail="A counter-offer must keep the original listing")
+
     if parent_offer.sender_id == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot counter your own offer. You can make a new offer instead.")
 
@@ -525,15 +495,16 @@ def counter_offer(
         raise HTTPException(status_code=400, detail=str(e))
 
     # Min price check
-    if conv.listing and conv.listing.min_price_per_day is not None:
-        if data.daily_price < conv.listing.min_price_per_day:
+    listing = parent_offer.listing
+    if listing and listing.min_price_per_day is not None:
+        if data.daily_price < listing.min_price_per_day:
             raise HTTPException(
                 status_code=400,
-                detail=f"Counter-offer price ₹{data.daily_price} is below the lender's minimum price of ₹{conv.listing.min_price_per_day}/day."
+                detail=f"Counter-offer price ₹{data.daily_price} is below the lender's minimum price of ₹{listing.min_price_per_day}/day."
             )
 
     # Check availability
-    is_avail, reason = check_listing_availability(db, conv.listing_id, data.start_date, data.end_date)
+    is_avail, reason = check_listing_availability(db, parent_offer.listing_id, data.start_date, data.end_date)
     if not is_avail:
         raise HTTPException(status_code=400, detail=reason)
 
@@ -544,6 +515,7 @@ def counter_offer(
     # Create new counter offer
     new_offer = NegotiationOffer(
         conversation_id=conv.id,
+        listing_id=parent_offer.listing_id,
         sender_id=current_user.id,
         daily_price=data.daily_price,
         start_date=data.start_date,
@@ -574,7 +546,7 @@ def counter_offer(
         parent_offer.sender_id,
         "borrowing_request",
         "New counter-offer",
-        f"{current_user.name} sent a counter-offer for {conv.listing.name if conv.listing else 'an item'}.",
+        f"{current_user.name} sent a counter-offer for {parent_offer.listing.name if parent_offer.listing else 'an item'}.",
         f"/messages/{conv.id}",
     )
 
@@ -620,7 +592,7 @@ def reject_offer(
         offer.sender_id,
         "rejection",
         "Rental offer rejected",
-        f"{current_user.name} rejected your offer for {conv.listing.name if conv.listing else 'an item'}.",
+        f"{current_user.name} rejected your offer for {offer.listing.name if offer.listing else 'an item'}.",
         f"/messages/{conv.id}",
         offer.borrow_request_id,
     )

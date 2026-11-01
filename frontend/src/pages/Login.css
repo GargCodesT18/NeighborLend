@@ -178,3 +178,18 @@
 .auth-link:hover {
   text-decoration: underline;
 }
+
+.native-google-signin {
+  width: 100%;
+  cursor: pointer;
+}
+
+.native-google-signin:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+@media (max-width: 480px) {
+  .login-page { padding: 24px 16px; }
+  .login-container { padding: 28px 20px; }
+}

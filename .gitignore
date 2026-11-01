@@ -40,6 +40,12 @@ pnpm-debug.log*
 *.sqlite
 *.sqlite3
 uploads/
+backend/uploads/
+
+# Generated AI and test outputs
+results/
+damage_comparison_result.json
+comparison.json
 
 # Logs and temporary files
 *.log
@@ -54,6 +60,22 @@ backend/_auth_probe_out.txt
 /neighborlend-backend.tar
 /neighborlend-frontend.tar
 /frontend/frontend.zip
+frontend/android/local.properties
+frontend/android/.cxx/
+frontend/android/captures/
+frontend/android/.gradle/
+frontend/android/app/build/
+frontend/android/keystore/
+*.jks
+*.keystore
+keystore.properties
+*.apk
+*.aab
+
+# Android Studio / Gradle local state
+.gradle/
+**/build/
+*.hprof
 
 # IDE and operating-system files
 .idea/

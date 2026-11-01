@@ -26,9 +26,9 @@ def _get_model():
     global _model
     if not YOLO_AVAILABLE:
         return None
-    if _model is None and os.path.exists(settings.ai_model_path):
+    if _model is None and os.path.exists(settings.ai_model_path_abs):
         try:
-            _model = YOLO(settings.ai_model_path)
+            _model = YOLO(settings.ai_model_path_abs)
         except Exception as e:
             print(f"Error loading YOLO model: {e}")
     return _model

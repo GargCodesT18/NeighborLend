@@ -46,7 +46,7 @@ def check_listing_availability(
         db.query(NegotiationOffer)
         .join(Conversation, NegotiationOffer.conversation_id == Conversation.id)
         .filter(
-            Conversation.listing_id == listing_id,
+            NegotiationOffer.listing_id == listing_id,
             NegotiationOffer.status == OfferStatus.accepted,
             NegotiationOffer.start_date <= end_date,
             NegotiationOffer.end_date >= start_date

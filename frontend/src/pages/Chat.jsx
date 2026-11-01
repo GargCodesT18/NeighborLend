@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
-import { resolvePhotoUrl } from '../utils/photoUrl';
 import './Chat.css';
 
 const formatTimestamp = (dateStr) => {
@@ -61,71 +60,122 @@ const Chat = () => {
   const [formNote, setFormNote] = useState('');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [offerError, setOfferError] = useState('');
+  const [lenderListings, setLenderListings] = useState([]);
+  const [formListingId, setFormListingId] = useState('');
 
   const messagesEndRef = useRef(null);
+  const conversationsRequestRef = useRef(null);
+  const activeConversationRequestRef = useRef(null);
+  const loadedConversationIdRef = useRef(null);
+  const currentConversationIdRef = useRef(conversationId);
+  currentConversationIdRef.current = conversationId;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   // 1. Fetch Conversations List
-  const fetchConversations = async (silent = false) => {
+  const fetchConversations = (silent = false) => {
+    if (conversationsRequestRef.current) return conversationsRequestRef.current;
     if (!silent) setLoadingConversations(true);
-    try {
-      const res = await api.get('/conversations');
-      setConversations(res.data);
-    } catch (err) {
-      console.error('Failed to load conversations:', err);
-    } finally {
-      if (!silent) setLoadingConversations(false);
-    }
+    const request = api.get('/conversations')
+      .then((res) => setConversations((previous) => (
+        JSON.stringify(previous) === JSON.stringify(res.data) ? previous : res.data
+      )))
+      .catch((err) => console.error('Failed to load conversations:', err))
+      .finally(() => {
+        if (conversationsRequestRef.current === request) conversationsRequestRef.current = null;
+        if (!silent) setLoadingConversations(false);
+      });
+    conversationsRequestRef.current = request;
+    return request;
   };
 
   useEffect(() => {
     fetchConversations();
   }, []);
 
+  useEffect(() => {
+    if (!activeConv?.lender?.id) return;
+    api.get('/listings/search?radius_km=500')
+      .then((res) => setLenderListings(res.data.filter((item) => item.owner_id === activeConv.lender.id)))
+      .catch((err) => console.error('Failed to load lender listings:', err));
+  }, [activeConv?.lender?.id]);
+
   // 2. Fetch Active Conversation Detail
-  const fetchActiveConversation = async (convId, silent = false) => {
-    if (!convId) return;
-    if (!silent) setLoadingActive(true);
-    setErrorMsg('');
-    try {
-      const res = await api.get(`/conversations/${convId}`);
-      setActiveConv(res.data);
-      setMessages(res.data.messages || []);
-      setOffers(res.data.offers || []);
-    } catch (err) {
-      console.error('Failed to fetch conversation details:', err);
-      setErrorMsg('Could not load conversation. It may not exist or you lack access.');
-    } finally {
-      if (!silent) setLoadingActive(false);
+  const fetchActiveConversation = (convId, silent = false) => {
+    if (!convId) return Promise.resolve();
+    if (activeConversationRequestRef.current?.id === convId) {
+      return activeConversationRequestRef.current.promise;
     }
+    const showInitialSpinner = !silent && loadedConversationIdRef.current !== convId;
+    if (showInitialSpinner) setLoadingActive(true);
+    setErrorMsg('');
+
+    const request = api.get(`/conversations/${convId}`)
+      .then((res) => {
+        if (currentConversationIdRef.current !== convId) return;
+        loadedConversationIdRef.current = convId;
+        setActiveConv((previous) => (
+          JSON.stringify(previous) === JSON.stringify(res.data) ? previous : res.data
+        ));
+        setMessages((previous) => {
+          const next = res.data.messages || [];
+          return JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+        });
+        setOffers((previous) => {
+          const next = res.data.offers || [];
+          return JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+        });
+      })
+      .catch((err) => {
+        console.error('Failed to fetch conversation details:', err);
+        if (currentConversationIdRef.current === convId) {
+          setErrorMsg('Could not load conversation. It may not exist or you lack access.');
+        }
+      })
+      .finally(() => {
+        if (activeConversationRequestRef.current?.promise === request) {
+          activeConversationRequestRef.current = null;
+        }
+        if (showInitialSpinner && currentConversationIdRef.current === convId) {
+          setLoadingActive(false);
+        }
+      });
+    activeConversationRequestRef.current = { id: convId, promise: request };
+    return request;
   };
 
   useEffect(() => {
-    if (conversationId) {
-      fetchActiveConversation(conversationId);
-    } else if (conversations.length > 0 && !activeConv) {
-      // Navigate to first conversation on desktop
+    if (conversationId) fetchActiveConversation(conversationId);
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId && conversations.length > 0) {
       navigate(`/messages/${conversations[0].id}`, { replace: true });
     }
-  }, [conversationId, conversations]);
+  }, [conversationId, conversations, navigate]);
 
   // Scroll to bottom when messages update
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
-  // 3. Real-Time Auto Refresh (Poll every 3 seconds for active conversation)
+  // Keep the open chat current while avoiding sidebar polling and visible loading states.
   useEffect(() => {
     if (!conversationId) return;
-    const interval = setInterval(() => {
-      fetchActiveConversation(conversationId, true);
-      fetchConversations(true);
-    }, 3000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') fetchActiveConversation(conversationId, true);
+    };
+    const interval = window.setInterval(refreshWhenVisible, 5000);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
 
-    return () => clearInterval(interval);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [conversationId]);
 
   // 4. Send Message Handler
@@ -190,7 +240,8 @@ const Chat = () => {
     const defaultEnd = new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0];
     setFormStartDate(today);
     setFormEndDate(defaultEnd);
-    setFormDailyPrice(activeConv?.listing?.price_per_day || '');
+    setFormListingId(lenderListings[0]?.id || '');
+    setFormDailyPrice(lenderListings[0]?.price_per_day || '');
     setFormNote('');
   };
 
@@ -198,7 +249,8 @@ const Chat = () => {
     setNegotiationMode('counter');
     setCounterTargetOffer(targetOffer);
     setOfferError('');
-    setFormDailyPrice(targetOffer.daily_price || activeConv?.listing?.price_per_day || '');
+    setFormListingId(targetOffer.listing_id || '');
+    setFormDailyPrice(targetOffer.daily_price || '');
     setFormStartDate(targetOffer.start_date.split('T')[0]);
     setFormEndDate(targetOffer.end_date.split('T')[0]);
     setFormNote('');
@@ -215,14 +267,20 @@ const Chat = () => {
     }
 
     const price = parseFloat(formDailyPrice);
-    if (activeConv?.listing?.min_price_per_day && price < activeConv.listing.min_price_per_day) {
-      setOfferError(`Minimum price per day is ₹${activeConv.listing.min_price_per_day}`);
+    const selectedListing = lenderListings.find((item) => item.id === formListingId);
+    if (!formListingId) {
+      setOfferError('The lender has no available listings for an offer.');
+      return;
+    }
+    if (selectedListing?.min_price_per_day && price < selectedListing.min_price_per_day) {
+      setOfferError(`Minimum price per day is ₹${selectedListing.min_price_per_day}`);
       return;
     }
 
     setOfferSubmitting(true);
     try {
       const payload = {
+        listing_id: formListingId,
         daily_price: price,
         start_date: new Date(formStartDate).toISOString(),
         end_date: new Date(formEndDate).toISOString(),
@@ -277,10 +335,9 @@ const Chat = () => {
   // Filter conversations
   const filteredConversations = conversations.filter((c) => {
     const term = searchQuery.toLowerCase();
-    const lName = (c.listing?.name || '').toLowerCase();
     const oName = (c.other_participant?.name || '').toLowerCase();
     const uName = (c.other_participant?.username || '').toLowerCase();
-    return lName.includes(term) || oName.includes(term) || uName.includes(term);
+    return oName.includes(term) || uName.includes(term);
   });
 
   const latestOffer = activeConv?.active_offer || (offers.length > 0 ? offers[offers.length - 1] : null);
@@ -325,7 +382,6 @@ const Chat = () => {
             filteredConversations.map((conv) => {
               const isActive = conv.id === conversationId;
               const other = conv.other_participant;
-              const photoUrl = resolvePhotoUrl(conv.listing?.photo_url);
               const actOffer = conv.active_offer;
 
               return (
@@ -335,13 +391,7 @@ const Chat = () => {
                   onClick={() => navigate(`/messages/${conv.id}`)}
                 >
                   <div className="item-thumb-wrapper">
-                    {photoUrl ? (
-                      <img src={photoUrl} alt={conv.listing.name} className="item-thumbnail" />
-                    ) : (
-                      <div className="item-thumbnail-placeholder">
-                        <Tag size={20} />
-                      </div>
-                    )}
+                    <div className="item-thumbnail-placeholder"><MessageSquare size={20} /></div>
                     <div className="avatar-badge-small" title={other.name}>
                       {(other.name || 'U')[0].toUpperCase()}
                     </div>
@@ -349,8 +399,8 @@ const Chat = () => {
 
                   <div className="conversation-content">
                     <div className="conversation-top-row">
-                      <span className="listing-name" title={conv.listing?.name}>
-                        {conv.listing?.name}
+                      <span className="listing-name" title={other.name}>
+                        {other.name}
                       </span>
                       <span className="timestamp-text">
                         {formatTimestamp(conv.last_message?.created_at || conv.updated_at)}
@@ -414,29 +464,13 @@ const Chat = () => {
 
               {activeConv && (
                 <div className="chat-listing-info">
-                  {activeConv.listing?.photo_url ? (
-                    <img 
-                      src={resolvePhotoUrl(activeConv.listing.photo_url)}
-                      alt={activeConv.listing.name} 
-                      className="chat-listing-thumb" 
-                    />
-                  ) : (
-                    <div className="chat-listing-thumb item-thumbnail-placeholder">
-                      <Tag size={18} />
-                    </div>
-                  )}
+                  <div className="chat-listing-thumb item-thumbnail-placeholder"><MessageSquare size={18} /></div>
                   <div className="chat-listing-meta">
                     <h3 className="chat-listing-title">
-                      <Link to={`/listing/${activeConv.listing_id}`} className="hover-underline">
-                        {activeConv.listing?.name}
-                      </Link>
+                      {activeConv.is_borrower ? activeConv.lender.name : activeConv.borrower.name}
                     </h3>
                     <div className="chat-listing-pricing">
-                      <span>₹{activeConv.listing?.price_per_day}/day</span>
-                      <span>•</span>
-                      <span>
-                        with {activeConv.is_borrower ? activeConv.lender.name : activeConv.borrower.name}
-                      </span>
+                      <span>Conversation</span>
                     </div>
                   </div>
                 </div>
@@ -659,8 +693,7 @@ const Chat = () => {
                   <span className="offer-status-tag status-pending">Base Rate</span>
                 </div>
                 <div className="offer-price-highlight">
-                  <span className="offer-rate-large gradient-text">₹{activeConv.listing?.price_per_day}</span>
-                  <span className="offer-unit">/ day</span>
+                  <span className="offer-rate-large gradient-text">—</span>
                 </div>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                   No negotiation offer has been made yet. You can submit an offer for specific dates.
@@ -680,6 +713,24 @@ const Chat = () => {
                 </div>
 
                 <div className="form-field">
+                  <label>Listing</label>
+                  <select
+                    required
+                    value={formListingId}
+                    disabled={negotiationMode === 'counter'}
+                    onChange={(e) => {
+                      const selected = lenderListings.find((item) => item.id === e.target.value);
+                      setFormListingId(e.target.value);
+                      if (selected) setFormDailyPrice(selected.price_per_day);
+                    }}
+                  >
+                    <option value="">Select a listing</option>
+                    {lenderListings.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select>
+                  {lenderListings.length === 0 && <span>No available listings from this lender.</span>}
+                </div>
+
+                <div className="form-field">
                   <label>Daily Price (₹/day)</label>
                   <input 
                     type="number" 
@@ -690,9 +741,9 @@ const Chat = () => {
                     value={formDailyPrice}
                     onChange={(e) => setFormDailyPrice(e.target.value)}
                   />
-                  {activeConv.listing?.min_price_per_day && (
+                  {lenderListings.find((item) => item.id === formListingId)?.min_price_per_day && (
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Minimum accepted price: ₹{activeConv.listing.min_price_per_day}/day
+                      Minimum accepted price: ₹{lenderListings.find((item) => item.id === formListingId).min_price_per_day}/day
                     </span>
                   )}
                 </div>
