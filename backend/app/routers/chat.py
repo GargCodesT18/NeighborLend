@@ -15,6 +15,7 @@ from app.schemas.chat import (
     ParticipantOut, ListingSummaryOut
 )
 from app.services.auth import get_current_user
+from app.services.notifications import create_notification
 from app.services.negotiation import calculate_rental_duration_and_cost, check_listing_availability
 
 router = APIRouter()
@@ -191,6 +192,14 @@ def create_or_get_conversation(
             is_system=True
         )
         db.add(sys_msg)
+        create_notification(
+            db,
+            listing.owner_id,
+            "borrowing_request",
+            "New borrowing request",
+            f"{current_user.name} wants to borrow {listing.name}.",
+            f"/messages/{conv.id}",
+        )
 
     if data.initial_message and data.initial_message.strip():
         user_msg = Message(
@@ -386,6 +395,15 @@ def create_offer(
         is_system=True
     )
     db.add(sys_msg)
+    recipient_id = conv.lender_id if current_user.id == conv.borrower_id else conv.borrower_id
+    create_notification(
+        db,
+        recipient_id,
+        "borrowing_request",
+        "New borrowing request offer",
+        f"{current_user.name} sent a rental offer for {conv.listing.name if conv.listing else 'an item'}.",
+        f"/messages/{conv.id}",
+    )
 
     conv.updated_at = datetime.utcnow()
     db.commit()
@@ -462,6 +480,15 @@ def accept_offer(
         is_system=True
     )
     db.add(sys_msg)
+    create_notification(
+        db,
+        offer.sender_id,
+        "approval",
+        "Rental offer approved",
+        f"{current_user.name} approved your offer for {conv.listing.name if conv.listing else 'an item'}.",
+        f"/messages/{conv.id}",
+        borrow_req.id,
+    )
 
     conv.updated_at = datetime.utcnow()
     db.commit()
@@ -542,6 +569,14 @@ def counter_offer(
         is_system=True
     )
     db.add(sys_msg)
+    create_notification(
+        db,
+        parent_offer.sender_id,
+        "borrowing_request",
+        "New counter-offer",
+        f"{current_user.name} sent a counter-offer for {conv.listing.name if conv.listing else 'an item'}.",
+        f"/messages/{conv.id}",
+    )
 
     conv.updated_at = datetime.utcnow()
     db.commit()
@@ -580,6 +615,15 @@ def reject_offer(
         is_system=True
     )
     db.add(sys_msg)
+    create_notification(
+        db,
+        offer.sender_id,
+        "rejection",
+        "Rental offer rejected",
+        f"{current_user.name} rejected your offer for {conv.listing.name if conv.listing else 'an item'}.",
+        f"/messages/{conv.id}",
+        offer.borrow_request_id,
+    )
 
     conv.updated_at = datetime.utcnow()
     db.commit()

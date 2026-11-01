@@ -13,7 +13,12 @@ async def upload_file(file: UploadFile = File(...)):
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    detections = detect_objects(image_bytes)
+    # Uploading must still work when the optional model is missing, fails to
+    # load, or cannot process a particular image.
+    try:
+        detections = detect_objects(image_bytes)
+    except Exception:
+        detections = []
 
     url = save_upload_from_bytes(
         image_bytes,

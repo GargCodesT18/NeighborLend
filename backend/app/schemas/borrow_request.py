@@ -37,6 +37,10 @@ class BorrowRequestOut(BaseModel):
     radius_km: float
     address_text: str
     status: BorrowRequestStatus
+    listing_id: Optional[str] = None
+    lender_id: Optional[str] = None
+    returned_at: Optional[datetime] = None
+    disputed_at: Optional[datetime] = None
     distance_km: Optional[float] = None
     created_at: datetime
 

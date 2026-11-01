@@ -44,6 +44,21 @@
   color: var(--accent-primary);
 }
 
+.unread-badge {
+  display: inline-flex;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 6px;
+  padding: 0 5px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .nav-link.active::after {
   content: '';
   position: absolute;

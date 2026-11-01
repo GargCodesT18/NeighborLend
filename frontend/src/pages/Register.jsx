@@ -72,7 +72,7 @@ const Register = () => {
       };
 
       await register(registerData);
-      navigate('/browse');
+      navigate(`/verify-email?email=${encodeURIComponent(formData.email)}`);
     } catch (err) {
       setError(
         err.response?.data?.detail ||

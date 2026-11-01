@@ -1,12 +1,32 @@
 from pathlib import Path
-from ultralytics import YOLO
 
 MODEL_PATH = Path(__file__).resolve().parents[2] / "ai_service" / "best_model.pt"
 
-model = YOLO(str(MODEL_PATH))
+_model = None
+_model_loaded = False
+
+
+def _get_model():
+    global _model, _model_loaded
+    if _model_loaded:
+        return _model
+
+    _model_loaded = True
+    try:
+        from ultralytics import YOLO
+        _model = YOLO(str(MODEL_PATH))
+    except Exception as exc:
+        # Keep the API and photo upload flow available when model weights or
+        # optional inference dependencies are unavailable.
+        print(f"Object detection unavailable: {exc}")
+    return _model
 
 
 def detect_objects(image_bytes: bytes):
+    model = _get_model()
+    if model is None:
+        return []
+
     import tempfile
 
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp:
@@ -34,4 +54,4 @@ def detect_objects(image_bytes: bytes):
         return detections
 
     finally:
-        Path(temp_path).unlink(missing_ok=True) 
+        Path(temp_path).unlink(missing_ok=True)

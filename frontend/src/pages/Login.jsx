@@ -1,16 +1,55 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Login.css';
 
 const Login = () => {
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, googleLogin } = useAuth();
   const navigate = useNavigate();
+  const googleButtonRef = useRef(null);
+
+  useEffect(() => {
+    if (!googleClientId) return undefined;
+
+    const mountGoogleButton = () => {
+      if (!window.google?.accounts?.id || !googleButtonRef.current) return false;
+      window.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async ({ credential }) => {
+          setError('');
+          setIsLoading(true);
+          try {
+            await googleLogin(credential);
+            navigate('/browse');
+          } catch (err) {
+            setError(err.response?.data?.detail || 'Google Sign-In failed. Please try again.');
+          } finally {
+            setIsLoading(false);
+          }
+        },
+      });
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        shape: 'rectangular',
+        text: 'signin_with',
+        width: 320,
+      });
+      return true;
+    };
+
+    if (mountGoogleButton()) return undefined;
+    const intervalId = window.setInterval(() => {
+      if (mountGoogleButton()) window.clearInterval(intervalId);
+    }, 250);
+    return () => window.clearInterval(intervalId);
+  }, [googleClientId, googleLogin, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -25,6 +64,10 @@ const Login = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleGoogleSetupNotice = () => {
+    setError('Google Sign-In needs a Google OAuth Web client ID. Set VITE_GOOGLE_CLIENT_ID and GOOGLE_CLIENT_ID in the project .env, then restart Vite and the backend.');
   };
 
   return (
@@ -75,6 +118,19 @@ const Login = () => {
             {isLoading ? <span className="spinner"></span> : 'Login'}
           </button>
         </form>
+
+        <div className="login-divider"><span>or continue with</span></div>
+        {googleClientId ? (
+            <div className="google-signin" ref={googleButtonRef} />
+        ) : (
+          <div className="google-signin-unconfigured">
+            <button type="button" className="google-signin-button" onClick={handleGoogleSetupNotice}>
+              <span className="google-signin-mark" aria-hidden="true">G</span>
+              Continue with Google
+            </button>
+            <p>Google Sign-In requires an OAuth client ID to be configured.</p>
+          </div>
+        )}
 
         <div className="login-footer">
           <p>Don't have an account? <Link to="/register" className="auth-link">Register</Link></p>

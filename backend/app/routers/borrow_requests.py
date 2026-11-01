@@ -1,11 +1,14 @@
 import math
 from typing import List, Optional
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, BorrowRequest, BorrowRequestStatus
+from app.models import User, BorrowRequest, BorrowRequestStatus, Listing, ListingStatus
 from app.schemas.borrow_request import BorrowRequestCreateIn, BorrowRequestOut, BorrowRequestUpdateIn
+from app.schemas.notification import DisputeCreateIn
 from app.services.auth import get_current_user
+from app.services.notifications import create_notification
 
 router = APIRouter()
 
@@ -33,10 +36,15 @@ def _format_request_out(req: BorrowRequest, distance_km: Optional[float] = None)
         "radius_km": req.radius_km,
         "address_text": req.address_text,
         "status": req.status,
+        "listing_id": req.listing_id,
+        "lender_id": req.listing.owner_id if req.listing else None,
+        "returned_at": req.returned_at,
+        "disputed_at": req.disputed_at,
         "distance_km": distance_km,
         "created_at": req.created_at
     }
 
+@router.post("", response_model=BorrowRequestOut)
 @router.post("/", response_model=BorrowRequestOut)
 def create_borrow_request(data: BorrowRequestCreateIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     req = BorrowRequest(
@@ -54,10 +62,29 @@ def create_borrow_request(data: BorrowRequestCreateIn, current_user: User = Depe
         status=BorrowRequestStatus.open
     )
     db.add(req)
+    db.flush()
+    matching_owners = db.query(Listing.owner_id).filter(
+        Listing.status == ListingStatus.published,
+        Listing.category == req.category,
+        Listing.owner_id != current_user.id,
+    )
+    if req.max_price_per_day is not None:
+        matching_owners = matching_owners.filter(Listing.price_per_day <= req.max_price_per_day)
+    for (owner_id,) in matching_owners.distinct().all():
+        create_notification(
+            db,
+            owner_id,
+            "borrowing_request",
+            "A neighbor needs an item",
+            f"{current_user.name} is looking for: {req.title}",
+            f"/borrow-requests/{req.id}",
+            req.id,
+        )
     db.commit()
     db.refresh(req)
     return _format_request_out(req)
 
+@router.get("", response_model=List[BorrowRequestOut])
 @router.get("/", response_model=List[BorrowRequestOut])
 def list_borrow_requests(
     category: Optional[str] = None,
@@ -90,6 +117,82 @@ def list_my_requests(current_user: User = Depends(get_current_user), db: Session
         BorrowRequest.status != BorrowRequestStatus.cancelled
     ).all()
     return [_format_request_out(r) for r in all_reqs]
+
+
+@router.get("/{request_id}", response_model=BorrowRequestOut)
+def get_borrow_request(request_id: str, db: Session = Depends(get_db)):
+    req = db.query(BorrowRequest).filter(
+        BorrowRequest.id == request_id,
+        BorrowRequest.status != BorrowRequestStatus.cancelled,
+    ).first()
+    if req is None:
+        raise HTTPException(status_code=404, detail="Borrow request not found")
+    return _format_request_out(req)
+
+
+def _get_rental_participants(request_id: str, db: Session, current_user: User):
+    req = db.query(BorrowRequest).with_for_update().filter(
+        BorrowRequest.id == request_id
+    ).first()
+    if req is None:
+        raise HTTPException(status_code=404, detail="Borrow request not found")
+    if req.listing_id is None or req.listing is None:
+        raise HTTPException(status_code=400, detail="This request is not a confirmed rental")
+    if current_user.id not in (req.borrower_id, req.listing.owner_id):
+        raise HTTPException(status_code=403, detail="Not authorized for this rental")
+    other_user_id = req.listing.owner_id if current_user.id == req.borrower_id else req.borrower_id
+    return req, other_user_id
+
+
+@router.post("/{request_id}/return")
+def report_return(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    req, other_user_id = _get_rental_participants(request_id, db, current_user)
+    if req.returned_at is not None:
+        raise HTTPException(status_code=409, detail="This rental has already been reported as returned")
+    req.returned_at = datetime.utcnow()
+    create_notification(
+        db,
+        other_user_id,
+        "return",
+        "Item return reported",
+        f"{current_user.name} reported the return for {req.title}.",
+        f"/borrow-requests/{req.id}",
+        req.id,
+    )
+    db.commit()
+    return {"status": "ok", "returned_at": req.returned_at}
+
+
+@router.post("/{request_id}/dispute")
+def report_dispute(
+    request_id: str,
+    data: DisputeCreateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    req, other_user_id = _get_rental_participants(request_id, db, current_user)
+    if req.disputed_at is not None:
+        raise HTTPException(status_code=409, detail="A dispute has already been reported for this rental")
+    description = data.description.strip()
+    if not description:
+        raise HTTPException(status_code=422, detail="Dispute description cannot be blank")
+    req.disputed_at = datetime.utcnow()
+    req.dispute_description = description
+    create_notification(
+        db,
+        other_user_id,
+        "dispute",
+        "A rental dispute was reported",
+        f"{current_user.name} reported a dispute for {req.title}.",
+        f"/borrow-requests/{req.id}",
+        req.id,
+    )
+    db.commit()
+    return {"status": "ok", "disputed_at": req.disputed_at}
 
 @router.delete("/{request_id}")
 def delete_borrow_request(request_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):

@@ -59,12 +59,18 @@ def _format_listing_out(listing: Listing, distance_km: Optional[float] = None) -
         "moderation_reason": listing.moderation_reason,
         "ai_label": listing.ai_label,
         "ai_confidence": listing.ai_confidence,
-        "photos": [p.url for p in listing.photos],
+        "photos": [
+            photo.url for photo in sorted(
+                listing.photos,
+                key=lambda photo: (not photo.is_cover, photo.created_at, photo.id),
+            )
+        ],
         "is_currently_rented": False,
         "distance_km": None if distance_km == float('inf') else distance_km,
         "created_at": listing.created_at
     }
 
+@router.post("", response_model=ListingOut)
 @router.post("/", response_model=ListingOut)
 def create_listing(data: ListingCreateIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     listing = Listing(
@@ -96,6 +102,7 @@ def create_listing(data: ListingCreateIn, current_user: User = Depends(get_curre
     db.refresh(listing)
     return _format_listing_out(listing)
 
+@router.get("", response_model=List[ListingOut])
 @router.get("/", response_model=List[ListingOut])
 def list_my_listings(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     listings = db.query(Listing).filter(Listing.owner_id == current_user.id, Listing.status != ListingStatus.removed).all()

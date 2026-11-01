@@ -30,6 +30,8 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     phone = Column(String, nullable=True)
     password_hash = Column(String, nullable=False)
+    is_verified = Column(Boolean, nullable=False, default=True, server_default="true")
+    google_sub = Column(String, unique=True, nullable=True, index=True)
     avatar_url = Column(String, nullable=True)
     trust_score = Column(Float, default=50.0)
     avg_rating = Column(Float, default=0.0)
@@ -46,6 +48,14 @@ class CaptchaChallenge(Base):
     id = Column(String, primary_key=True, default=_uuid)
     answer = Column(Integer, nullable=False)
     expires_at = Column(DateTime, nullable=False, index=True)
+
+class EmailVerification(Base):
+    __tablename__ = "email_verifications"
+    user_id = Column(String, ForeignKey("users.id"), primary_key=True)
+    code_hash = Column(String, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    last_sent_at = Column(DateTime, nullable=False)
 
 class Listing(Base):
     __tablename__ = "listings"
@@ -98,10 +108,25 @@ class BorrowRequest(Base):
     status = Column(Enum(BorrowRequestStatus), default=BorrowRequestStatus.open, index=True)
     listing_id = Column(String, ForeignKey("listings.id"), nullable=True)
     total_cost = Column(Float, nullable=True)
+    returned_at = Column(DateTime, nullable=True)
+    disputed_at = Column(DateTime, nullable=True)
+    dispute_description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     borrower = relationship("User", back_populates="borrow_requests", foreign_keys=[borrower_id])
     listing = relationship("Listing", foreign_keys=[listing_id])
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    notification_type = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    link_url = Column(String, nullable=False)
+    borrow_request_id = Column(String, ForeignKey("borrow_requests.id"), nullable=True, index=True)
+    is_read = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
 
 class OfferStatus(str, enum.Enum):
     pending = "pending"

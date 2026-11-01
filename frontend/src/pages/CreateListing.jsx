@@ -15,10 +15,11 @@ const CreateListing = () => {
   const fileInputRef = useRef(null);
 
   // Form State
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null);
+  const [files, setFiles] = useState([]);
+  const [previews, setPreviews] = useState([]);
   const [aiData, setAiData] = useState(null);
-  const [uploadedUrl, setUploadedUrl] = useState(null);
+  const [uploadedUrls, setUploadedUrls] = useState([]);
+  const [uploadError, setUploadError] = useState('');
   
   const [formData, setFormData] = useState({
     title: '',
@@ -44,52 +45,60 @@ const CreateListing = () => {
   // Step 1: Handle File
   const handleFileDrop = (e) => {
     e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files?.length) {
+      processFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleFileSelect = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      processFile(e.target.files[0]);
+    if (e.target.files?.length) {
+      processFiles(Array.from(e.target.files));
+      e.target.value = '';
     }
   };
 
-  const processFile = async (selectedFile) => {
-    setFile(selectedFile);
-    setPreview(URL.createObjectURL(selectedFile));
+  const processFiles = async (selectedFiles) => {
+    const imageFiles = selectedFiles.filter((selectedFile) => selectedFile.type.startsWith('image/'));
+    if (!imageFiles.length) return;
+
+    setFiles(imageFiles);
+    setPreviews(imageFiles.map((selectedFile) => URL.createObjectURL(selectedFile)));
+    setUploadedUrls([]);
+    setUploadError('');
+    setAiData(null);
     setIsLoading(true);
     setAiOffline(false);
 
+    const urls = [];
+    let failedUploads = 0;
     try {
-      const form = new FormData();
-      form.append('file', selectedFile);
-      
-      const uploadRes = await api.post('/upload', form, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
+      for (let index = 0; index < imageFiles.length; index += 1) {
+        const form = new FormData();
+        form.append('file', imageFiles[index]);
+        try {
+          const uploadRes = await api.post('/upload', form);
+          const data = uploadRes.data;
+          if (!data.url) throw new Error('Upload response did not include an image URL.');
+          urls.push(data.url);
+
+          if (index === 0 && data.ai_label) {
+            setAiData({
+              label: data.ai_label,
+              confidence: (data.ai_confidence * 100).toFixed(0),
+              suggested_category: 'Other'
+            });
+            setFormData(prev => ({ ...prev, title: data.ai_label }));
+          }
+        } catch (err) {
+          failedUploads += 1;
+          console.error('Image upload failed:', err);
         }
-      });
-      const data = uploadRes.data;
-      
-      setUploadedUrl(data.url);
-      
-      if (data.ai_label) {
-        setAiData({ 
-          label: data.ai_label, 
-          confidence: (data.ai_confidence * 100).toFixed(0), 
-          suggested_category: 'Other' 
-        });
-        setFormData(prev => ({
-          ...prev,
-          title: data.ai_label
-        }));
-      } else {
-        setAiData(null);
       }
-    } catch (err) {
-      console.error(err);
-      setAiOffline(true);
+      setUploadedUrls(urls);
+      if (failedUploads) {
+        setUploadError(`${failedUploads} photo${failedUploads === 1 ? '' : 's'} could not be uploaded. Select the photos again to retry.`);
+        setAiOffline(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -197,7 +206,7 @@ const CreateListing = () => {
         address_text: formData.address,
         ai_label: aiData?.label || null,
         ai_confidence: aiData ? Number(aiData.confidence) / 100.0 : null,
-        photo_urls: uploadedUrl ? [uploadedUrl] : []
+        photo_urls: uploadedUrls
       };
 
       await api.post('/listings', payload);
@@ -230,25 +239,37 @@ const CreateListing = () => {
             <p className="text-muted">Upload a photo and our AI will do the heavy lifting.</p>
             
             <div 
-              className={`dropzone ${preview ? 'has-image' : ''}`}
+              className={`dropzone ${previews.length ? 'has-image' : ''}`}
               onDragOver={e => e.preventDefault()}
               onDrop={handleFileDrop}
-              onClick={() => !preview && fileInputRef.current?.click()}
+              onClick={() => !previews.length && fileInputRef.current?.click()}
             >
-              <input type="file" ref={fileInputRef} onChange={handleFileSelect} hidden accept="image/*" />
+              <input type="file" ref={fileInputRef} onChange={handleFileSelect} hidden accept="image/*" multiple />
               
-              {preview ? (
+              {previews.length ? (
                 <div className="preview-container">
-                  <img src={preview} alt="Preview" className="image-preview" />
-                  <button className="btn-outline reupload-btn" onClick={(e) => { e.stopPropagation(); setPreview(null); setAiData(null); setFile(null); }}>
-                    Use different photo
+                  <div className="preview-grid">
+                    {previews.map((previewUrl, index) => (
+                      <img key={previewUrl} src={previewUrl} alt={`Photo ${index + 1}`} className="image-preview" />
+                    ))}
+                  </div>
+                  <button className="btn-outline reupload-btn" disabled={isLoading} onClick={(e) => {
+                    e.stopPropagation();
+                    setPreviews([]);
+                    setFiles([]);
+                    setUploadedUrls([]);
+                    setAiData(null);
+                    setUploadError('');
+                    setAiOffline(false);
+                  }}>
+                    Choose different photos
                   </button>
                 </div>
               ) : (
                 <div className="dropzone-content">
                   <UploadCloud size={48} className="upload-icon" />
-                  <h3>Click or drag photo here</h3>
-                  <p>Supports JPG, PNG (Max 5MB)</p>
+                  <h3>Click or drag photos here</h3>
+                  <p>Supports JPG and PNG</p>
                 </div>
               )}
             </div>
@@ -275,15 +296,19 @@ const CreateListing = () => {
 
             {aiOffline && (
               <div className="ai-result error">
-                <p>AI service is currently offline. Please proceed and enter details manually.</p>
+                <p>{uploadError || 'AI detection is unavailable. Photos were uploaded and you can enter details manually.'}</p>
               </div>
+            )}
+
+            {previews.length > 0 && !isLoading && !uploadError && (
+              <p className="text-muted photo-upload-status">{uploadedUrls.length} of {files.length} photos uploaded.</p>
             )}
 
             <div className="wizard-actions">
               <button 
                 className="btn-primary" 
                 onClick={() => setStep(2)}
-                disabled={!preview || isLoading}
+                disabled={!previews.length || isLoading || Boolean(uploadError) || uploadedUrls.length !== files.length}
               >
                 Next Step
               </button>

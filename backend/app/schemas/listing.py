@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from app.models import ListingStatus
 
 class ListingCreateIn(BaseModel):
@@ -16,7 +16,7 @@ class ListingCreateIn(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     address_text: str = ""
-    photo_urls: List[str] = []
+    photo_urls: List[str] = Field(default_factory=list)
     ai_label: Optional[str] = None
     ai_confidence: Optional[float] = None
 

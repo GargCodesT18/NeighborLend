@@ -18,32 +18,40 @@ cd NeighborLend
 - **Node.js 18+ & npm**
 - **Git**
 
-Open two terminal windows (PowerShell or Bash) from the project directory.
+Open two terminal windows (PowerShell or Bash) from the `NeighborLend/` project
+directory. The existing Windows virtual environment is in the parent
+`neighbourlend/venv/` directory.
 
 ---
 
 ### Backend Setup
 
-You can run the backend from either the repository root (`NeighborLend/`) or the `backend/` directory.
-
-#### Option A: Running from the repository root (`NeighborLend/`)
+From the repository root (`NeighborLend/`), activate the existing virtual
+environment, change to `backend/` so Python can import the `app` package, and
+start Uvicorn:
 ```powershell
-# Activate virtual environment
-.\venv\Scripts\Activate.ps1
-
-# Ensure Python discovers the backend package
-$env:PYTHONPATH="backend"
-
-# Start the development server
+..\venv\Scripts\Activate.ps1
+Set-Location backend
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-#### Option B: Running from `backend/`
+Alternatively, from the repository root, keep the current directory and add
+the backend directory to Python's import path:
 ```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+$env:PYTHONPATH = (Join-Path (Get-Location) "backend")
+..\venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Do not create a second virtual environment when using the existing
+`neighbourlend/venv/` environment. If it is not activated, invoke the backend
+from the `backend/` directory with its interpreter explicitly:
+```powershell
+..\venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+From the `backend/` directory, the equivalent command with the already
+activated environment is:
+```powershell
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -83,7 +91,54 @@ npm run dev
 ```
 
 - **Web Application**: `http://localhost:5173`
-- The frontend connects to the backend API specified by `VITE_API_BASE_URL` (defaults to `http://localhost:8000/api`).
+- The frontend connects to the backend API specified by `VITE_API_BASE_URL` (defaults to `/api`). Vite proxies `/api` and `/uploads` to the local backend at `http://127.0.0.1:8000`; Docker uses Nginx to proxy these paths to the backend container.
+
+---
+
+## Running with Docker Compose
+
+Docker Compose runs the Vite development server on port 5173 and FastAPI on
+port 8000. The backend connects to PostgreSQL using the required `DATABASE_URL`
+from the root `.env`; uploaded files use a persistent Docker volume when
+Supabase Storage is not configured. The YOLO weights are included in the
+backend image.
+
+1. If this directory does not already have a `.env` file, create one from the
+   example. Preserve any existing `.env` and update it instead:
+   ```powershell
+   if (!(Test-Path .env)) { Copy-Item .env.example .env }
+   ```
+   Set `JWT_SECRET` to a private, randomly generated value. Generate one with
+   `python -c "import secrets; print(secrets.token_urlsafe(48))"` and paste the
+   output into `.env`. Set `DATABASE_URL` to the PostgreSQL connection string
+   used by your database. Never commit `.env` or put the Supabase service-role
+   key in frontend/Vite variables.
+2. From the `NeighborLend/` project directory, validate Compose, build both
+   service images, and start the services:
+   ```powershell
+   docker compose config --quiet
+   docker compose build backend frontend
+   docker compose up -d backend frontend
+   ```
+3. Open `http://localhost:5173`. Check backend readiness at
+   `http://localhost:8000/api/health`. Inspect service status and logs with:
+   ```powershell
+   docker compose ps
+   docker compose logs --tail=100 backend frontend
+   ```
+4. Stop without removing containers or volumes, then start again with:
+   ```powershell
+   docker compose stop
+   docker compose start
+   ```
+
+The Vite server proxies `/api` and `/uploads` to the backend service over the
+Compose network. Browser API requests use the same-origin `/api` path; Supabase
+Storage URLs are returned directly to the browser. Supabase credentials are
+loaded only into the backend container. To use Supabase Storage, set both
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env`; otherwise uploads go
+to the persistent local uploads volume. The frontend Dockerfile also has a
+`production` target for an Nginx build.
 
 ---
 
@@ -116,10 +171,55 @@ ADMIN_EMAILS=admin@neighborlend.com
 # Optional: Supabase Storage Integration
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+
+# Google Identity Services Web client ID (use the same ID in both variables)
+GOOGLE_CLIENT_ID=
+VITE_GOOGLE_CLIENT_ID=
+
+# SMTP provider for email verification OTPs
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=
+SMTP_USE_TLS=true
 ```
 
 > [!NOTE]
 > File uploads automatically resolve to the backend uploads directory regardless of the current working directory from which uvicorn is launched, preventing static file 404 errors. If Supabase credentials are configured, uploads are stored directly in Supabase Storage.
+
+### Authentication and Inbox setup
+
+Email/password registration keeps the existing CAPTCHA and sends a 6-digit,
+10-minute verification code through the configured SMTP server. Configure
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and
+`SMTP_FROM_EMAIL` in `.env`; `SMTP_USE_TLS=true` enables STARTTLS (port 465 uses
+implicit TLS). The code is never returned by the API. Users must verify their
+email before password login, and resend requests are rate-limited to one per
+minute. Existing accounts are retained as verified by the additive startup
+migration.
+
+For Google Sign-In, create a **Web application** OAuth client in Google Cloud
+Console, add each frontend origin (for example `http://localhost:5173`) to its
+authorized JavaScript origins, and set its client ID in both `GOOGLE_CLIENT_ID`
+and `VITE_GOOGLE_CLIENT_ID`. The frontend sends Google's ID token to FastAPI,
+which validates the signature, audience, issuer, and verified email before
+issuing the existing `nl_token` JWT. No Google client secret is needed for this
+ID-token flow. For local development, put both values in the project-root
+`.env`; Vite is configured to read that file when started from `frontend/`.
+Restart both the frontend and backend after setting the values. Until a client
+ID is configured, the login page displays the Google option and explains that
+OAuth setup is required, but Google authentication cannot complete.
+
+The authenticated inbox is available at `/inbox`; notifications are generated
+for matching new borrowing requests, conversation/offer activity, approvals,
+rejections, rental returns, and disputes. The API exposes
+`GET /api/notifications`, `GET /api/notifications/unread-count`,
+`PATCH /api/notifications/{id}/read`, and
+`PATCH /api/notifications/read-all`. Return and dispute reports are available
+to either participant on confirmed rental requests. Inbox and verification
+tables are created automatically; the existing `users` and `borrow_requests`
+tables receive additive columns without dropping data.
 
 ---
 

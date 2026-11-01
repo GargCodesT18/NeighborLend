@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Image as ImageIcon, Star } from 'lucide-react';
+import { resolvePhotoUrl } from '../utils/photoUrl';
 import './ListingCard.css';
 
 const ListingCard = ({ listing }) => {
@@ -25,7 +26,7 @@ const ListingCard = ({ listing }) => {
     locationText = 'Location unavailable';
   }
 
-  const imageUrl = listing.image_url || listing.photos?.[0];
+  const imageUrl = resolvePhotoUrl(listing.image_url || listing.photos?.[0]);
 
   return (
     <div className="listing-card glass" onClick={handleClick}>

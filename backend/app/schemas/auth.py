@@ -1,19 +1,37 @@
 from datetime import datetime
 from typing import Optional, Union
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 class CaptchaOut(BaseModel):
     captcha_id: str
     question: str
 
 class RegisterIn(BaseModel):
-    name: str
-    username: str
+    name: str = Field(..., min_length=1, max_length=120)
+    username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
     phone: Optional[str] = None
-    password: str
+    password: str = Field(..., min_length=6)
     captcha_id: str
     captcha_answer: Union[int, str]
+
+
+class RegistrationOut(BaseModel):
+    message: str
+    email: EmailStr
+
+
+class VerifyEmailIn(BaseModel):
+    email: EmailStr
+    code: str = Field(..., pattern=r"^[0-9]{6}$")
+
+
+class ResendVerificationIn(BaseModel):
+    email: EmailStr
+
+
+class GoogleLoginIn(BaseModel):
+    credential: str = Field(..., min_length=1)
 
 class LoginIn(BaseModel):
     username_or_email: str

@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     admin_emails: str = "admin@neighborlend.com"
     supabase_url: str = ""
     supabase_service_role_key: str = ""
+    google_client_id: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_use_tls: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

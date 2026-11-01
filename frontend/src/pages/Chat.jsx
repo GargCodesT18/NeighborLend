@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
+import { resolvePhotoUrl } from '../utils/photoUrl';
 import './Chat.css';
 
 const formatTimestamp = (dateStr) => {
@@ -324,7 +325,7 @@ const Chat = () => {
             filteredConversations.map((conv) => {
               const isActive = conv.id === conversationId;
               const other = conv.other_participant;
-              const photoUrl = conv.listing?.photo_url;
+              const photoUrl = resolvePhotoUrl(conv.listing?.photo_url);
               const actOffer = conv.active_offer;
 
               return (
@@ -415,7 +416,7 @@ const Chat = () => {
                 <div className="chat-listing-info">
                   {activeConv.listing?.photo_url ? (
                     <img 
-                      src={activeConv.listing.photo_url} 
+                      src={resolvePhotoUrl(activeConv.listing.photo_url)}
                       alt={activeConv.listing.name} 
                       className="chat-listing-thumb" 
                     />

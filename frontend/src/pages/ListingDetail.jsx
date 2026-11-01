@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { MapPin, Star, Shield, AlertCircle, Clock, Check, MessageSquare } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
+import { resolvePhotoUrl } from '../utils/photoUrl';
 import './ListingDetail.css';
 
 const ListingDetail = () => {
@@ -10,6 +11,7 @@ const ListingDetail = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [listing, setListing] = useState(null);
+  const [photoIndex, setPhotoIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [startingChat, setStartingChat] = useState(false);
 
@@ -31,7 +33,8 @@ const ListingDetail = () => {
   if (!listing) return <div className="loading-state">Listing not found</div>;
 
   const isOwner = user && listing.owner && user.username === listing.owner.username;
-  const imageUrl = listing.photos && listing.photos.length > 0 ? listing.photos[0] : listing.image_url;
+  const photos = listing.photos?.length ? listing.photos : (listing.image_url ? [listing.image_url] : []);
+  const imageUrl = resolvePhotoUrl(photos[photoIndex] || photos[0]);
 
   const handleChatWithOwner = async () => {
     if (!user) {
@@ -61,6 +64,23 @@ const ListingDetail = () => {
           <img src={imageUrl} alt={listing.title} className="detail-hero-image" />
         ) : (
           <div className="detail-hero-placeholder"></div>
+        )}
+
+        {photos.length > 1 && (
+          <div className="detail-photo-thumbnails" aria-label="Listing photos">
+            {photos.map((photo, index) => (
+              <button
+                key={photo}
+                type="button"
+                className={`detail-photo-thumbnail ${photoIndex === index ? 'active' : ''}`}
+                onClick={() => setPhotoIndex(index)}
+                aria-label={`Show photo ${index + 1}`}
+                aria-pressed={photoIndex === index}
+              >
+                <img src={resolvePhotoUrl(photo)} alt="" />
+              </button>
+            ))}
+          </div>
         )}
         
         <div className="container detail-hero-content">

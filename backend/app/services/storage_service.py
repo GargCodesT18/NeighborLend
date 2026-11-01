@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+from pathlib import Path
 from fastapi import UploadFile, HTTPException
 from app.config import get_settings
 from supabase import create_client, Client
@@ -8,27 +9,50 @@ from supabase import create_client, Client
 settings = get_settings()
 
 supabase: Client = None
+_public_bucket_ready = False
 if settings.supabase_url and settings.supabase_service_role_key:
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
 
+
+def _ensure_public_bucket(bucket_name: str) -> None:
+    """Create the bucket when absent and make existing buckets browser-readable."""
+    global _public_bucket_ready
+    if _public_bucket_ready:
+        return
+    try:
+        supabase.storage.create_bucket(bucket_name, options={"public": True})
+    except Exception:
+        # Supabase also raises when the bucket already exists. Update it instead
+        # of assuming that an existing bucket is public.
+        try:
+            supabase.storage.update_bucket(bucket_name, options={"public": True})
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not configure Supabase bucket '{bucket_name}': {exc}",
+            ) from exc
+    _public_bucket_ready = True
+
+
+def _make_filename(original_filename: str) -> str:
+    suffix = Path(original_filename or "").suffix.lower()
+    return f"{uuid.uuid4()}{suffix}"
+
 def save_upload(file: UploadFile, subfolder: str = "") -> str:
-    ext = file.filename.split(".")[-1] if "." in file.filename else ""
-    filename = f"{uuid.uuid4()}.{ext}"
+    filename = _make_filename(file.filename)
     
     if supabase:
         bucket_name = "listing-images"
         path_in_bucket = f"{subfolder}/{filename}" if subfolder else filename
         file_bytes = file.file.read()
         try:
-            # We try to create the bucket just in case it doesn't exist, ignore errors if it does
-            try:
-                supabase.storage.create_bucket(bucket_name, options={"public": True})
-            except Exception:
-                pass
-            
-            res = supabase.storage.from_(bucket_name).upload(path_in_bucket, file_bytes, file_options={"content-type": file.content_type})
-            public_url = supabase.storage.from_(bucket_name).get_public_url(path_in_bucket)
-            return public_url
+            _ensure_public_bucket(bucket_name)
+            supabase.storage.from_(bucket_name).upload(
+                path_in_bucket,
+                file_bytes,
+                file_options={"content-type": file.content_type or "application/octet-stream"},
+            )
+            return supabase.storage.from_(bucket_name).get_public_url(path_in_bucket)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error uploading to Supabase: {str(e)}")
     else:
@@ -50,26 +74,19 @@ def save_upload_from_bytes(
     content_type: str,
     subfolder: str = ""
 ) -> str:
-    ext = original_filename.split(".")[-1] if "." in original_filename else ""
-    filename = f"{uuid.uuid4()}.{ext}"
+    filename = _make_filename(original_filename)
 
     if supabase:
         bucket_name = "listing-images"
         path_in_bucket = f"{subfolder}/{filename}" if subfolder else filename
 
         try:
-            try:
-                supabase.storage.create_bucket(
-                    bucket_name,
-                    options={"public": True}
-                )
-            except Exception:
-                pass
+            _ensure_public_bucket(bucket_name)
 
             supabase.storage.from_(bucket_name).upload(
                 path_in_bucket,
                 file_bytes,
-                file_options={"content-type": content_type}
+                file_options={"content-type": content_type or "application/octet-stream"}
             )
 
             return supabase.storage.from_(
@@ -110,13 +127,22 @@ def delete_upload(url: str):
         except Exception:
             pass
         return
-        
-    if not url.startswith(settings.public_base_url):
+
+    if settings.public_base_url:
+        if not url.startswith(settings.public_base_url):
+            return
+        path_part = url[len(settings.public_base_url):]
+    else:
+        path_part = url
+
+    if not path_part.startswith("/uploads/"):
         return
-    
-    path_part = url[len(settings.public_base_url):]
-    if path_part.startswith("/"):
-        path_part = path_part[1:]
-        
-    if os.path.exists(path_part):
-        os.remove(path_part)
+
+    upload_root = os.path.abspath(settings.upload_dir_abs)
+    filepath = os.path.abspath(
+        os.path.join(upload_root, path_part.removeprefix("/uploads/"))
+    )
+    if os.path.commonpath((upload_root, filepath)) != upload_root:
+        return
+    if os.path.isfile(filepath):
+        os.remove(filepath)

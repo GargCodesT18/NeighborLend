@@ -4,6 +4,9 @@ import Navbar from './components/Navbar';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import VerifyEmail from './pages/VerifyEmail';
+import Inbox from './pages/Inbox';
+import BorrowRequestDetail from './pages/BorrowRequestDetail';
 import Browse from './pages/Browse';
 import CreateListing from './pages/CreateListing';
 import CreateBorrowRequest from './pages/CreateBorrowRequest';
@@ -38,6 +41,8 @@ function App() {
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/borrow-requests/:id" element={<BorrowRequestDetail />} />
             <Route path="/browse" element={<Browse />} />
             <Route path="/listing/:id" element={<ListingDetail />} />
             <Route path="/create-listing" element={
@@ -58,6 +63,11 @@ function App() {
             <Route path="/messages" element={
               <ProtectedRoute>
                 <Chat />
+              </ProtectedRoute>
+            } />
+            <Route path="/inbox" element={
+              <ProtectedRoute>
+                <Inbox />
               </ProtectedRoute>
             } />
             <Route path="/messages/:conversationId" element={

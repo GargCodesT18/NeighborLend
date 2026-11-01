@@ -1,6 +1,5 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import api from '../api/client';
-import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext();
 
@@ -26,7 +25,7 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
-  const login = async (usernameOrEmail, password) => {
+  const login = useCallback(async (usernameOrEmail, password) => {
     const res = await api.post('/auth/login', {
       username_or_email: usernameOrEmail, // Changed from 'username'
       password
@@ -34,14 +33,26 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('nl_token', res.data.access_token);
     setUser(res.data.user || res.data);
     return res.data;
-  };
+  }, []);
 
-  const register = async (data) => {
+  const register = useCallback(async (data) => {
     const res = await api.post('/auth/register', data);
-    localStorage.setItem('nl_token', res.data.access_token);
-    setUser(res.data.user || res.data);
     return res.data;
-  };
+  }, []);
+
+  const verifyEmail = useCallback(async (email, code) => {
+    const res = await api.post('/auth/verify-email', { email, code });
+    localStorage.setItem('nl_token', res.data.access_token);
+    setUser(res.data.user);
+    return res.data;
+  }, []);
+
+  const googleLogin = useCallback(async (credential) => {
+    const res = await api.post('/auth/google', { credential });
+    localStorage.setItem('nl_token', res.data.access_token);
+    setUser(res.data.user);
+    return res.data;
+  }, []);
 
   const logout = () => {
     localStorage.removeItem('nl_token');
@@ -54,6 +65,8 @@ export const AuthProvider = ({ children }) => {
       loading,
       login,
       register,
+      verifyEmail,
+      googleLogin,
       logout,
       isAuthenticated: !!user
     }}>

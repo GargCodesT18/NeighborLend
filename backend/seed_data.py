@@ -41,7 +41,6 @@ def seed():
         {"name": "Extension Ladder", "category": "Ladder", "price_bought": 8000, "years_owned": 4, "price_per_day": 120, "latitude": 28.5293, "longitude": 77.1528, "address_text": "Vasant Kunj, New Delhi"},
         {"name": "Sony Headphones", "category": "Headphones", "price_bought": 5000, "years_owned": 1, "price_per_day": 100, "latitude": 28.5244, "longitude": 77.2188, "address_text": "Saket, New Delhi"},
         {"name": "Claw Hammer", "category": "Hammer", "price_bought": 800, "years_owned": 2, "price_per_day": 30, "latitude": 28.6415, "longitude": 77.1209, "address_text": "Rajouri Garden, New Delhi"},
-        {"name": "Canon DSLR Camera", "category": "Camera", "price_bought": 45000, "years_owned": 2, "price_per_day": 500, "latitude": 28.4950, "longitude": 77.0895, "address_text": "Cyber City, Gurgaon"},
         {"name": "4-Person Camping Tent", "category": "Tent & Camping Gear", "price_bought": 6000, "years_owned": 1, "price_per_day": 250, "latitude": 28.6280, "longitude": 77.3649, "address_text": "Sector 62, Noida"}
     ]
     

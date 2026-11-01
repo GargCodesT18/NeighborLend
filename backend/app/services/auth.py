@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import secrets
 import uuid
 import bcrypt
 from datetime import datetime, timedelta
@@ -13,6 +16,9 @@ from app.models import CaptchaChallenge, User
 settings = get_settings()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 CAPTCHA_TTL_MINUTES = 5
+EMAIL_OTP_TTL_MINUTES = 10
+EMAIL_OTP_RESEND_SECONDS = 60
+EMAIL_OTP_MAX_ATTEMPTS = 5
 
 def hash_password(password: str) -> str:
     pwd_bytes = password.encode('utf-8')
@@ -33,6 +39,19 @@ def create_access_token(user_id: str) -> str:
     to_encode = {"sub": user_id, "exp": expire}
     return jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
+
+def create_email_otp() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_email_otp(user_id: str, code: str) -> str:
+    message = f"{user_id}:{code}".encode("utf-8")
+    return hmac.new(settings.jwt_secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def verify_email_otp(user_id: str, code: str, expected_hash: str) -> bool:
+    return hmac.compare_digest(hash_email_otp(user_id, code), expected_hash)
+
 def decode_access_token(token: str) -> Optional[str]:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
@@ -50,7 +69,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user_id is None:
         raise credentials_exception
     user = db.query(User).filter(User.id == user_id).first()
-    if user is None:
+    if user is None or not user.is_verified:
         raise credentials_exception
     return user
 
