@@ -7,6 +7,7 @@ from app.models import User, Listing, ListingPhoto, ListingStatus
 from app.schemas.listing import ListingCreateIn, ListingUpdateIn, ListingOut, SuggestPriceIn, SuggestPriceOut
 from app.services.auth import get_current_user
 from app.services.pricing import suggest_price_per_day, calculate_rental_suggestion
+from app.services.storage_service import is_public_listing_image_url
 
 router = APIRouter()
 
@@ -73,6 +74,11 @@ def _format_listing_out(listing: Listing, distance_km: Optional[float] = None) -
 @router.post("", response_model=ListingOut)
 @router.post("/", response_model=ListingOut)
 def create_listing(data: ListingCreateIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if any(not is_public_listing_image_url(url) for url in data.photo_urls):
+        raise HTTPException(
+            status_code=422,
+            detail="Listing photos must be uploaded to this project's public Supabase listing_photos bucket.",
+        )
     listing = Listing(
         owner_id=current_user.id,
         name=data.name,

@@ -23,3 +23,7 @@ class UnreadCountOut(BaseModel):
 
 class DisputeCreateIn(BaseModel):
     description: str = Field(..., min_length=1, max_length=2000)
+
+
+class HandoverIssueCreateIn(BaseModel):
+    description: str = Field(..., min_length=1, max_length=2000)

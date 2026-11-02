@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict
-from app.models import BorrowRequestStatus
+from app.models import BorrowRequestStatus, HandoverStatus
 
 class BorrowRequestCreateIn(BaseModel):
     title: str
@@ -41,6 +41,15 @@ class BorrowRequestOut(BaseModel):
     lender_id: Optional[str] = None
     returned_at: Optional[datetime] = None
     disputed_at: Optional[datetime] = None
+    handover_status: HandoverStatus = HandoverStatus.not_applicable
+    handover_marked_at: Optional[datetime] = None
+    handover_confirmed_at: Optional[datetime] = None
+    handover_confirmed_by: Optional[str] = None
+    handover_issue_description: Optional[str] = None
+    handover_issue_reported_at: Optional[datetime] = None
+    borrowing_started_at: Optional[datetime] = None
+    return_due_at: Optional[datetime] = None
+    conversation_id: Optional[str] = None
     distance_km: Optional[float] = None
     created_at: datetime
 

@@ -245,6 +245,7 @@ class TestChatAndNegotiation(unittest.TestCase):
         self.assertEqual(db_req.max_price_per_day, 450.0)
         self.assertEqual(db_req.total_cost, 1350.0)
         self.assertEqual(db_req.status.value, "open")
+        self.assertEqual(db_req.handover_status, "pending")
 
     def test_07_prevent_duplicate_acceptance_and_conflicting_dates(self):
         # 1. Duplicate acceptance fails

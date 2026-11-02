@@ -25,8 +25,9 @@ def get_db():
         db.close()
 
 
-def migrate_schema():
+def migrate_schema(target_engine=None):
     """Apply additive schema changes needed by existing installations."""
+    target_engine = target_engine or engine
     additions = {
         "users": {
             "is_verified": "BOOLEAN NOT NULL DEFAULT TRUE",
@@ -36,13 +37,21 @@ def migrate_schema():
             "returned_at": "DATETIME",
             "disputed_at": "DATETIME",
             "dispute_description": "TEXT",
+            "handover_status": "VARCHAR NOT NULL DEFAULT 'not_applicable'",
+            "handover_marked_at": "DATETIME",
+            "handover_confirmed_at": "DATETIME",
+            "handover_confirmed_by": "VARCHAR",
+            "handover_issue_description": "TEXT",
+            "handover_issue_reported_at": "DATETIME",
+            "borrowing_started_at": "DATETIME",
+            "return_due_at": "DATETIME",
         },
         "negotiation_offers": {
             "listing_id": "VARCHAR",
         },
     }
 
-    with engine.begin() as connection:
+    with target_engine.begin() as connection:
         inspector = inspect(connection)
         existing_tables = set(inspector.get_table_names())
         for table_name, columns in additions.items():

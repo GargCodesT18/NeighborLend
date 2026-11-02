@@ -22,6 +22,13 @@ class BorrowRequestStatus(str, enum.Enum):
     closed = "closed"
     cancelled = "cancelled"
 
+class HandoverStatus(str, enum.Enum):
+    not_applicable = "not_applicable"
+    pending = "pending"
+    marked_given = "marked_given"
+    confirmed = "confirmed"
+    issue_reported = "issue_reported"
+
 class User(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True, default=_uuid)
@@ -108,6 +115,14 @@ class BorrowRequest(Base):
     status = Column(Enum(BorrowRequestStatus), default=BorrowRequestStatus.open, index=True)
     listing_id = Column(String, ForeignKey("listings.id"), nullable=True)
     total_cost = Column(Float, nullable=True)
+    handover_status = Column(String, nullable=False, default=HandoverStatus.not_applicable.value, server_default=HandoverStatus.not_applicable.value)
+    handover_marked_at = Column(DateTime, nullable=True)
+    handover_confirmed_at = Column(DateTime, nullable=True)
+    handover_confirmed_by = Column(String, nullable=True)
+    handover_issue_description = Column(Text, nullable=True)
+    handover_issue_reported_at = Column(DateTime, nullable=True)
+    borrowing_started_at = Column(DateTime, nullable=True)
+    return_due_at = Column(DateTime, nullable=True)
     returned_at = Column(DateTime, nullable=True)
     disputed_at = Column(DateTime, nullable=True)
     dispute_description = Column(Text, nullable=True)
@@ -115,6 +130,7 @@ class BorrowRequest(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     borrower = relationship("User", back_populates="borrow_requests", foreign_keys=[borrower_id])
     listing = relationship("Listing", foreign_keys=[listing_id])
+    negotiation_offers = relationship("NegotiationOffer", back_populates="borrow_request")
 
 class Notification(Base):
     __tablename__ = "notifications"
@@ -179,5 +195,5 @@ class NegotiationOffer(Base):
 
     conversation = relationship("Conversation", back_populates="offers")
     sender = relationship("User")
-    borrow_request = relationship("BorrowRequest")
+    borrow_request = relationship("BorrowRequest", back_populates="negotiation_offers")
     listing = relationship("Listing")

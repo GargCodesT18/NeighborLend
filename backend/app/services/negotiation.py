@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional, Tuple
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models import Listing, ListingStatus, NegotiationOffer, OfferStatus, BorrowRequest, BorrowRequestStatus, Conversation
 
@@ -67,10 +68,11 @@ def check_listing_availability(
         .filter(
             BorrowRequest.listing_id == listing_id,
             BorrowRequest.status == BorrowRequestStatus.fulfilled,
+            BorrowRequest.returned_at.is_(None),
             BorrowRequest.needed_from.isnot(None),
             BorrowRequest.needed_until.isnot(None),
-            BorrowRequest.needed_from <= end_date,
-            BorrowRequest.needed_until >= start_date
+            func.coalesce(BorrowRequest.borrowing_started_at, BorrowRequest.needed_from) <= end_date,
+            func.coalesce(BorrowRequest.return_due_at, BorrowRequest.needed_until) >= start_date
         )
         .first()
     )

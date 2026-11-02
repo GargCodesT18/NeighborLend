@@ -1,4 +1,6 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from app.models import User
+from app.services.auth import get_current_user
 
 from app.services.storage_service import save_upload_from_bytes
 from app.services.ml_service import detect_objects
@@ -7,7 +9,12 @@ router = APIRouter()
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    if not (file.content_type or "").lower().startswith("image/"):
+        raise HTTPException(status_code=415, detail="Please upload an image file.")
     image_bytes = await file.read()
 
     if not image_bytes:
@@ -24,7 +31,8 @@ async def upload_file(file: UploadFile = File(...)):
         image_bytes,
         file.filename,
         file.content_type,
-        "images"
+        "images",
+        require_supabase=True,
     )
 
     best_detection = max(

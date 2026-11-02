@@ -1,12 +1,14 @@
 import os
 import uuid
 import shutil
+from urllib.parse import urlsplit
 from pathlib import Path
 from fastapi import UploadFile, HTTPException
 from app.config import get_settings
 from supabase import create_client, Client
 
 settings = get_settings()
+LISTING_PHOTOS_BUCKET = "listing_photos"
 
 supabase: Client = None
 _public_bucket_ready = False
@@ -14,23 +16,26 @@ if settings.supabase_url and settings.supabase_service_role_key:
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
 
 
-def _ensure_public_bucket(bucket_name: str) -> None:
-    """Create the bucket when absent and make existing buckets browser-readable."""
+def _ensure_public_bucket(bucket_name: str = LISTING_PHOTOS_BUCKET) -> None:
+    """Check the configured existing bucket; never create or change bucket settings."""
     global _public_bucket_ready
     if _public_bucket_ready:
         return
+    if bucket_name != LISTING_PHOTOS_BUCKET:
+        raise HTTPException(status_code=500, detail="Unexpected listing photo bucket configuration.")
     try:
-        supabase.storage.create_bucket(bucket_name, options={"public": True})
-    except Exception:
-        # Supabase also raises when the bucket already exists. Update it instead
-        # of assuming that an existing bucket is public.
-        try:
-            supabase.storage.update_bucket(bucket_name, options={"public": True})
-        except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Could not configure Supabase bucket '{bucket_name}': {exc}",
-            ) from exc
+        bucket = supabase.storage.get_bucket(bucket_name)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"The existing Supabase Storage bucket '{bucket_name}' was not found or could not be checked.",
+        ) from exc
+    is_public = bucket.get("public") if isinstance(bucket, dict) else getattr(bucket, "public", None)
+    if is_public is not True:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Make the existing Supabase Storage bucket '{bucket_name}' public to display listing photos.",
+        )
     _public_bucket_ready = True
 
 
@@ -38,23 +43,64 @@ def _make_filename(original_filename: str) -> str:
     suffix = Path(original_filename or "").suffix.lower()
     return f"{uuid.uuid4()}{suffix}"
 
+
+def is_public_listing_image_url(url: str) -> bool:
+    """Return true only for public URLs in this app's configured Supabase bucket."""
+    if not settings.supabase_url or not isinstance(url, str):
+        return False
+    try:
+        expected = urlsplit(settings.supabase_url)
+        actual = urlsplit(url)
+        return (
+            expected.scheme == "https"
+            and actual.scheme == "https"
+            and actual.hostname == expected.hostname
+            and actual.username is None
+            and actual.password is None
+            and actual.port in (None, 443)
+            and not actual.query
+            and not actual.fragment
+            and actual.path.startswith(f"/storage/v1/object/public/{LISTING_PHOTOS_BUCKET}/")
+            and len(actual.path) > len(f"/storage/v1/object/public/{LISTING_PHOTOS_BUCKET}/")
+        )
+    except ValueError:
+        return False
+
+
+def _require_supabase_storage() -> None:
+    if supabase is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Listing photo uploads require SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the backend.",
+        )
+
+
+def _upload_to_supabase(file_bytes: bytes, object_path: str, content_type: str) -> str:
+    _require_supabase_storage()
+    try:
+        _ensure_public_bucket()
+        supabase.storage.from_(LISTING_PHOTOS_BUCKET).upload(
+            object_path,
+            file_bytes,
+            file_options={"content-type": content_type or "application/octet-stream", "upsert": "true"},
+        )
+        public_url = supabase.storage.from_(LISTING_PHOTOS_BUCKET).get_public_url(object_path)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Could not upload the image to Supabase Storage.") from exc
+
+    if not is_public_listing_image_url(public_url):
+        raise HTTPException(status_code=502, detail="Supabase returned an invalid public image URL.")
+    return public_url
+
 def save_upload(file: UploadFile, subfolder: str = "") -> str:
     filename = _make_filename(file.filename)
     
     if supabase:
-        bucket_name = "listing-images"
-        path_in_bucket = f"{subfolder}/{filename}" if subfolder else filename
         file_bytes = file.file.read()
-        try:
-            _ensure_public_bucket(bucket_name)
-            supabase.storage.from_(bucket_name).upload(
-                path_in_bucket,
-                file_bytes,
-                file_options={"content-type": file.content_type or "application/octet-stream"},
-            )
-            return supabase.storage.from_(bucket_name).get_public_url(path_in_bucket)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error uploading to Supabase: {str(e)}")
+        path_in_bucket = f"{subfolder}/{filename}" if subfolder else filename
+        return _upload_to_supabase(file_bytes, path_in_bucket, file.content_type or "application/octet-stream")
     else:
         upload_dir = os.path.join(settings.upload_dir_abs, subfolder)
         os.makedirs(upload_dir, exist_ok=True)
@@ -72,33 +118,16 @@ def save_upload_from_bytes(
     file_bytes: bytes,
     original_filename: str,
     content_type: str,
-    subfolder: str = ""
+    subfolder: str = "",
+    *,
+    require_supabase: bool = False,
+    object_path: str = None,
 ) -> str:
     filename = _make_filename(original_filename)
 
-    if supabase:
-        bucket_name = "listing-images"
-        path_in_bucket = f"{subfolder}/{filename}" if subfolder else filename
-
-        try:
-            _ensure_public_bucket(bucket_name)
-
-            supabase.storage.from_(bucket_name).upload(
-                path_in_bucket,
-                file_bytes,
-                file_options={"content-type": content_type or "application/octet-stream"}
-            )
-
-            return supabase.storage.from_(
-                bucket_name
-            ).get_public_url(path_in_bucket)
-
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error uploading to Supabase: {str(e)}"
-            )
-
+    if supabase or require_supabase or object_path:
+        path_in_bucket = object_path or (f"{subfolder}/{filename}" if subfolder else filename)
+        return _upload_to_supabase(file_bytes, path_in_bucket, content_type or "application/octet-stream")
     else:
         upload_dir = os.path.join(settings.upload_dir_abs, subfolder)
         os.makedirs(upload_dir, exist_ok=True)
@@ -118,7 +147,7 @@ def save_upload_from_bytes(
 
 def delete_upload(url: str):
     if supabase and url.startswith(settings.supabase_url):
-        bucket_name = "listing-images"
+        bucket_name = LISTING_PHOTOS_BUCKET
         try:
             parts = url.split(f"/object/public/{bucket_name}/")
             if len(parts) == 2:

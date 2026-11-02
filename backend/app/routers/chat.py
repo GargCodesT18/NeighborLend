@@ -428,6 +428,7 @@ def accept_offer(
         needed_from=offer.start_date,
         needed_until=offer.end_date,
         total_cost=offer.total_cost,
+        handover_status="pending",
         latitude=offer.listing.latitude if offer.listing else None,
         longitude=offer.listing.longitude if offer.listing else None,
         radius_km=offer.listing.lending_radius_km if offer.listing else 10.0,
