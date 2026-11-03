@@ -8,6 +8,7 @@ from app.schemas.listing import ListingCreateIn, ListingUpdateIn, ListingOut, Su
 from app.services.auth import get_current_user
 from app.services.pricing import suggest_price_per_day, calculate_rental_suggestion
 from app.services.storage_service import is_public_listing_image_url
+from app.config import get_settings
 
 router = APIRouter()
 
@@ -74,11 +75,21 @@ def _format_listing_out(listing: Listing, distance_km: Optional[float] = None) -
 @router.post("", response_model=ListingOut)
 @router.post("/", response_model=ListingOut)
 def create_listing(data: ListingCreateIn, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if any(not is_public_listing_image_url(url) for url in data.photo_urls):
-        raise HTTPException(
-            status_code=422,
-            detail="Listing photos must be uploaded to this project's public Supabase listing_photos bucket.",
-        )
+    settings = get_settings()
+    # Validate photo URLs: must be from Supabase in production, allow local in dev
+    for url in data.photo_urls:
+        if not is_public_listing_image_url(url):
+            if settings.app_env.lower() in {"production", "prod"}:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Listing photos must be uploaded to this project's public Supabase listing_photos bucket.",
+                )
+            # In development, allow local upload URLs
+            if not (url.startswith(settings.public_base_url.rstrip("/") + "/uploads/") or url.startswith("/uploads/")):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Invalid photo URL. Must be from Supabase Storage or local uploads.",
+                )
     listing = Listing(
         owner_id=current_user.id,
         name=data.name,
