@@ -62,8 +62,15 @@ const MyListings = () => {
 
   const saveEdit = async (id) => {
     try {
-      await api.patch(`/listings/${id}`, editForm);
-      setListings(listings.map(l => l.id === id ? { ...l, ...editForm } : l));
+      // Convert numeric fields
+      const payload = {
+        ...editForm,
+        price_per_day: editForm.price_per_day ? Number(editForm.price_per_day) : undefined,
+        security_deposit: editForm.security_deposit ? Number(editForm.security_deposit) : undefined,
+        lending_radius_km: editForm.lending_radius_km ? Number(editForm.lending_radius_km) : undefined,
+      };
+      await api.patch(`/listings/${id}`, payload);
+      setListings(listings.map(l => l.id === id ? { ...l, ...payload } : l));
       cancelEdit();
     } catch (err) {
       console.error(err);
@@ -71,7 +78,8 @@ const MyListings = () => {
   };
 
   const handleEditChange = (e) => {
-    setEditForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    setEditForm(prev => ({ ...prev, [name]: value }));
   };
 
   return (

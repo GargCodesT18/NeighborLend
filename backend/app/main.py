@@ -29,12 +29,17 @@ def _preload_model():
     try:
         from ultralytics import YOLO
         from app.config import get_settings
+        from app.services.ml_service import _model_loaded as _, _model as __  # trigger import
+        import app.services.ml_service as ml_service
         model_path = get_settings().ai_model_path_abs
-        _model = YOLO(str(model_path))
+        model = YOLO(str(model_path))
         # Warm-up inference with a dummy image
         import numpy as np
         dummy = np.zeros((640, 640, 3), dtype=np.uint8)
-        _model(dummy, verbose=False)
+        model(dummy, verbose=False)
+        # Set the global model in ml_service
+        ml_service._model = model
+        ml_service._model_loaded = True
         logging.getLogger(__name__).info("YOLOv8 model pre-loaded and warmed up")
     except Exception as exc:
         logging.getLogger(__name__).warning(f"YOLOv8 pre-load skipped: {exc}")

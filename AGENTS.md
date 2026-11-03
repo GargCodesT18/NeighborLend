@@ -1,0 +1,89 @@
+# NeighborLend - Agent Instructions
+
+## Repository Structure
+- **Monorepo**: `frontend/` (React 18 + Vite 8) + `backend/` (FastAPI + Python 3.11)
+- **Root config**: `.env` (shared), `compose.yaml`, `render.yaml`, `vercel.json`
+- **AI model**: `backend/ai_service/best_model.pt` (YOLOv8 for object detection)
+
+## Development Modes
+
+### Mode A: Frontend-Only (Recommended)
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173, proxied to deployed backend
+```
+- Uses `VITE_API_BASE_URL=https://neighborlend-6z0f.onrender.com/api` from `.env`
+- No Python/PostgreSQL needed
+
+### Mode B: Full Local Stack
+```bash
+# Backend (terminal 1)
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: .\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+# Frontend (terminal 2)
+cd frontend
+npm install
+npm run dev          # Proxies /api and /uploads to localhost:8000
+```
+
+### Docker (Production-like)
+```bash
+docker compose up --build   # Requires .env with DATABASE_URL, JWT_SECRET
+```
+
+## Key Commands
+
+| Task | Command |
+|------|---------|
+| Frontend dev | `cd frontend && npm run dev` |
+| Frontend build | `cd frontend && npm run build` (runs `check-web-env.mjs` first) |
+| Frontend preview | `cd frontend && npm run preview` |
+| Backend dev | `cd backend && python -m uvicorn app.main:app --reload` |
+| Backend tests | `cd backend && python -m pytest` |
+| Backend tests (verbose) | `cd backend && python -m pytest -v` |
+| Lint/typecheck | None configured (add if needed) |
+
+## Environment Variables (`.env` at root)
+- **Frontend reads**: `VITE_API_BASE_URL`, `VITE_GOOGLE_CLIENT_ID` (via `vite.config.js` `envDir: '..'`)
+- **Backend reads**: All others via `pydantic-settings` from `BASE_DIR/.env`
+- **Critical for local backend**: `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`
+- **Production backend**: `DATABASE_URL` (PostgreSQL), `JWT_SECRET` (32+ chars), `SUPABASE_*`, `SMTP_*`, `GOOGLE_CLIENT_ID`
+
+## Testing
+- **Backend**: `pytest` with isolated SQLite in-memory DB (see `backend/tests/conftest.py`)
+- **Frontend**: No test runner configured; `photoUrl.test.js` exists but no test script
+- Run tests from `backend/` directory
+
+## Architecture Notes
+- **Backend entrypoint**: `backend/app/main.py` — creates tables on startup (`Base.metadata.create_all`), mounts `/uploads` static files
+- **API routes**: `/api/auth`, `/api/listings`, `/api/borrow-requests`, `/api/chat`, `/api/ai`, `/api/uploads`, `/api/notifications`
+- **Health check**: `GET /api/health` — verifies DB connectivity
+- **CORS**: Configured via `CORS_ORIGINS` env var; must include frontend origin
+- **Auth**: JWT (HS256) in Authorization header; Axios interceptor in `frontend/src/api/client.js`
+- **AI inference**: Runs on photo upload via `uploads.py` router → `storage_service.py` → YOLOv8
+- **Database**: SQLAlchemy 2.0 + Alembic (migrations not yet used; `create_all` on startup)
+
+## Deployment
+- **Frontend**: Vercel (root: `frontend/`, framework: Vite). Requires `VITE_API_BASE_URL` (HTTPS, path ends in `/api`)
+- **Backend**: Render via `render.yaml` (Docker). Health check: `/api/health`
+- **Supabase**: PostgreSQL + Storage bucket `listing_photos`
+- **Email**: Brevo SMTP for OTP verification
+
+## Common Gotchas
+1. **CORS errors**: Ensure `CORS_ORIGINS` in `.env` includes your frontend origin (e.g., `http://localhost:5173`)
+2. **JWT_SECRET**: Must be 32+ chars in production; default is insecure
+3. **Database**: Local default is SQLite (`sqlite:///./neighborlend.db`); production requires PostgreSQL
+4. **AI model path**: `AI_MODEL_PATH` resolves relative to `backend/app/` parent dir
+5. **Uploads**: Local dev uses `./uploads`; production uses Supabase Storage (requires `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`)
+6. **Vite proxy**: Only works in dev; production frontend calls API directly via `VITE_API_BASE_URL`
+7. **Build check**: `npm run build:web` validates `VITE_API_BASE_URL` is a public HTTPS URL ending in `/api`
+
+## Git / PR Conventions
+- Branch: `feature/your-feature-name` off `main`
+- Commits: Conventional (`feat:`, `fix:`, `docs:`, etc.)
+- PR checks: `npm run build` (frontend), `python -m pytest` (backend)
