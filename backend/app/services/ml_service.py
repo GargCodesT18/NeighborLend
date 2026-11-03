@@ -1,3 +1,4 @@
+from pathlib import Path
 from app.config import get_settings
 
 MODEL_PATH = get_settings().ai_model_path_abs

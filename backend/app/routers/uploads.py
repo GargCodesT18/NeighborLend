@@ -32,7 +32,7 @@ async def upload_file(
         file.filename,
         file.content_type,
         "images",
-        require_supabase=True,
+        require_supabase=False,
     )
 
     best_detection = max(
