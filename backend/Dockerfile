@@ -5,6 +5,17 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# Install system dependencies for OpenCV/YOLOv8 (libxcb, GLX, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libxcb1 \
+    libglib2.0-0 \
+    libgl1-mesa-glx \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt ./requirements.txt
 # Use the official CPU-only wheels. The local, model-tested dependency pair is
 # torch 2.14.1 / torchvision 0.29.1; install it before Ultralytics so pip does
