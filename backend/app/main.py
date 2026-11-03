@@ -1,5 +1,6 @@
 import os
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -23,14 +24,32 @@ if settings.app_env.lower() in {"production", "prod"}:
             "Supabase Storage is not configured; production uploads will use ephemeral local storage."
         )
 
-# Create tables on startup (MVP - replace with Alembic later)
-Base.metadata.create_all(bind=engine)
-migrate_schema()
+# Pre-load YOLO model at startup to avoid first-request latency
+def _preload_model():
+    try:
+        from ultralytics import YOLO
+        from app.config import get_settings
+        model_path = get_settings().ai_model_path_abs
+        _model = YOLO(str(model_path))
+        # Warm-up inference with a dummy image
+        import numpy as np
+        dummy = np.zeros((640, 640, 3), dtype=np.uint8)
+        _model(dummy, verbose=False)
+        logging.getLogger(__name__).info("YOLOv8 model pre-loaded and warmed up")
+    except Exception as exc:
+        logging.getLogger(__name__).warning(f"YOLOv8 pre-load skipped: {exc}")
 
-# Ensure upload dir exists (use absolute path so it works regardless of CWD)
-os.makedirs(settings.upload_dir_abs, exist_ok=True)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    Base.metadata.create_all(bind=engine)
+    migrate_schema()
+    os.makedirs(settings.upload_dir_abs, exist_ok=True)
+    _preload_model()
+    yield
+    # Shutdown (if needed)
 
-app = FastAPI(title="NeighborLend API", version="1.0.0")
+app = FastAPI(title="NeighborLend API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

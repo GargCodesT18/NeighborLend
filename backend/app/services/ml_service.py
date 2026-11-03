@@ -35,7 +35,9 @@ def detect_objects(image_bytes: bytes):
         temp_path = temp.name
 
     try:
-        results = model(temp_path, conf=0.25, verbose=False)
+        # Use smaller image size (320px) for faster inference on CPU
+        # conf=0.45 matches AI_CONFIDENCE_THRESHOLD from config
+        results = model(temp_path, imgsz=320, conf=0.45, verbose=False, stream=False)
 
         detections = []
 
