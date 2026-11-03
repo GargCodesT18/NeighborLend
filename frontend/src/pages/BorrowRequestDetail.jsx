@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, Upload, CheckCircle, Star, Eye } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
 import './BorrowRequestDetail.css';
 
 const HANDOVER_LABELS = {
   pending: 'Awaiting Product Handover',
+  photos_uploaded: 'Photos Uploaded - Awaiting Handover',
   marked_given: 'Awaiting Borrower Confirmation',
   confirmed: 'Handover Confirmed',
   issue_reported: 'Issue Reported',
+  return_photos_uploaded: 'Return Photos Uploaded - Awaiting Lender Confirmation',
+  return_confirmed: 'Return Confirmed',
 };
 
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : '—';
@@ -24,6 +27,18 @@ const BorrowRequestDetail = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  // New state for photo uploads
+  const [handoverPhotos, setHandoverPhotos] = useState([]);
+  const [handoverPreviews, setHandoverPreviews] = useState([]);
+  const [confirmPhotos, setConfirmPhotos] = useState([]);
+  const [confirmPreviews, setConfirmPreviews] = useState([]);
+  const [returnPhotos, setReturnPhotos] = useState([]);
+  const [returnPreviews, setReturnPreviews] = useState([]);
+  const [lenderRating, setLenderRating] = useState(0);
+  const [borrowerRating, setBorrowerRating] = useState(0);
+  const [lenderRatingComment, setLenderRatingComment] = useState('');
+  const [borrowerRatingComment, setBorrowerRatingComment] = useState('');
+  const [ratingFormOpen, setRatingFormOpen] = useState(false);
 
   const fetchRequest = useCallback(async () => {
     try {
@@ -75,6 +90,117 @@ const BorrowRequestDetail = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Photo upload handlers
+  const handleHandoverPhotos = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length > 10) { alert('Maximum 10 photos'); return; }
+    setHandoverPhotos(files);
+    setHandoverPreviews(files.map(f => URL.createObjectURL(f)));
+  };
+  const handleConfirmPhotos = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length > 10) { alert('Maximum 10 photos'); return; }
+    setConfirmPhotos(files);
+    setConfirmPreviews(files.map(f => URL.createObjectURL(f)));
+  };
+  const handleReturnPhotos = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length > 10) { alert('Maximum 10 photos'); return; }
+    setReturnPhotos(files);
+    setReturnPreviews(files.map(f => URL.createObjectURL(f)));
+  };
+
+  const uploadHandoverPhotos = async () => {
+    if (!handoverPhotos.length) return;
+    setSubmitting(true); setError('');
+    try {
+      // First upload files to get URLs
+      const urls = [];
+      for (const file of handoverPhotos) {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await api.post('/upload', form);
+        urls.push(res.data.url);
+      }
+      await api.post(`/borrow-requests/${id}/handover/upload-photos`, { photo_urls: urls });
+      setHandoverPhotos([]); setHandoverPreviews([]);
+      await fetchRequest();
+      window.dispatchEvent(new Event('notifications:updated'));
+    } catch (err) { setError(err.response?.data?.detail || 'Could not upload photos.'); }
+    finally { setSubmitting(false); }
+  };
+
+  const confirmHandoverWithPhotos = async () => {
+    setSubmitting(true); setError('');
+    try {
+      const urls = [];
+      for (const file of confirmPhotos) {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await api.post('/upload', form);
+        urls.push(res.data.url);
+      }
+      await api.post(`/borrow-requests/${id}/handover/confirm-with-photos`, { photo_urls: urls });
+      setConfirmPhotos([]); setConfirmPreviews([]);
+      await fetchRequest();
+      window.dispatchEvent(new Event('notifications:updated'));
+    } catch (err) { setError(err.response?.data?.detail || 'Could not confirm handover.'); }
+    finally { setSubmitting(false); }
+  };
+
+  const uploadReturnPhotos = async () => {
+    if (!returnPhotos.length) return;
+    setSubmitting(true); setError('');
+    try {
+      const urls = [];
+      for (const file of returnPhotos) {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await api.post('/upload', form);
+        urls.push(res.data.url);
+      }
+      await api.post(`/borrow-requests/${id}/return/upload-photos`, { photo_urls: urls });
+      setReturnPhotos([]); setReturnPreviews([]);
+      await fetchRequest();
+      window.dispatchEvent(new Event('notifications:updated'));
+    } catch (err) { setError(err.response?.data?.detail || 'Could not upload return photos.'); }
+    finally { setSubmitting(false); }
+  };
+
+  const confirmReturn = async (approved) => {
+    setSubmitting(true); setError('');
+    try {
+      await api.post(`/borrow-requests/${id}/return/confirm`, { approved });
+      await fetchRequest();
+      window.dispatchEvent(new Event('notifications:updated'));
+    } catch (err) { setError(err.response?.data?.detail || 'Could not confirm return.'); }
+    finally { setSubmitting(false); }
+  };
+
+  const rateLender = async () => {
+    if (!lenderRating) { alert('Please select a rating'); return; }
+    setSubmitting(true); setError('');
+    try {
+      await api.post(`/borrow-requests/${id}/rate-lender`, { rating: lenderRating, comment: lenderRatingComment });
+      setRatingFormOpen(false); setLenderRating(0); setLenderRatingComment('');
+      await fetchRequest();
+      window.dispatchEvent(new Event('notifications:updated'));
+    } catch (err) { setError(err.response?.data?.detail || 'Could not submit rating.'); }
+    finally { setSubmitting(false); }
+  };
+
+  const rateBorrower = async () => {
+    if (!borrowerRating) { alert('Please select a rating'); return; }
+    setSubmitting(true); setError('');
+    try {
+      await api.post(`/borrow-requests/${id}/rate-borrower`, { rating: borrowerRating, comment: borrowerRatingComment });
+      setRatingFormOpen(false); setBorrowerRating(0); setBorrowerRatingComment('');
+      await fetchRequest();
+      window.dispatchEvent(new Event('notifications:updated'));
+    } catch (err) { setError(err.response?.data?.detail || 'Could not submit rating.'); }
+    finally { setSubmitting(false); }
   };
 
   const reportHandoverIssue = async (event) => {
@@ -160,33 +286,69 @@ const BorrowRequestDetail = () => {
               <p className="handover-meta">Marked handed over: {formatDateTime(request.handover_marked_at)}</p>
             )}
 
+            {/* Step 1: Lender uploads photos */}
             {request.handover_status === 'pending' && isLender && (
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={submitting}
-                onClick={() => runHandoverAction(
-                  'mark-given',
-                  'Confirm that you physically handed this product to the borrower. They will be asked to inspect and confirm it.',
+              <div className="handover-step">
+                <h3>Step 1: Upload Product Photos</h3>
+                <p>Upload photos of the item before handing it over.</p>
+                <input type="file" accept="image/*" multiple onChange={handleHandoverPhotos} disabled={submitting} />
+                {handoverPreviews.length && (
+                  <div className="photo-previews">
+                    {handoverPreviews.map((preview, i) => (
+                      <img key={i} src={preview} alt={`Handover ${i+1}`} className="photo-preview" />
+                    ))}
+                  </div>
                 )}
-              >
-                {submitting ? 'Updating…' : 'Mark as Handed Over'}
-              </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={submitting || !handoverPhotos.length}
+                  onClick={uploadHandoverPhotos}
+                >
+                  {submitting ? 'Uploading…' : `Upload ${handoverPhotos.length} Photo(s)`}
+                </button>
+              </div>
             )}
 
-            {request.handover_status === 'marked_given' && isBorrower && (
-              <div className="handover-actions">
-                <p>Inspect the product before confirming its condition.</p>
+            {/* Step 2: Lender marks as given (after photos) */}
+            {request.handover_status === 'photos_uploaded' && isLender && (
+              <div className="handover-step">
+                <h3>Step 2: Mark as Handed Over</h3>
+                <p>Photos uploaded. Now confirm you physically handed the item to the borrower.</p>
                 <button
                   type="button"
                   className="btn-primary"
                   disabled={submitting}
                   onClick={() => runHandoverAction(
-                    'confirm',
-                    'Confirm that you physically received the product and it matches the agreed condition. This starts the borrowing period.',
+                    'mark-given',
+                    'Confirm that you physically handed this product to the borrower. They will be asked to inspect and confirm it.',
                   )}
                 >
-                  Received in Good Condition
+                  {submitting ? 'Updating…' : 'Mark as Handed Over'}
+                </button>
+              </div>
+            )}
+
+            {/* Step 3: Borrower confirms with optional photos */}
+            {request.handover_status === 'marked_given' && isBorrower && (
+              <div className="handover-step">
+                <h3>Step 3: Confirm Receipt</h3>
+                <p>Inspect the product and confirm you received it in good condition. Optionally add photos.</p>
+                <input type="file" accept="image/*" multiple onChange={handleConfirmPhotos} disabled={submitting} />
+                {confirmPreviews.length && (
+                  <div className="photo-previews">
+                    {confirmPreviews.map((preview, i) => (
+                      <img key={i} src={preview} alt={`Confirm ${i+1}`} className="photo-preview" />
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={submitting}
+                  onClick={confirmHandoverWithPhotos}
+                >
+                  {submitting ? 'Confirming…' : 'Received in Good Condition'}
                 </button>
                 {!issueFormOpen && (
                   <button type="button" className="btn-outline" disabled={submitting} onClick={() => setIssueFormOpen(true)}>
@@ -237,10 +399,121 @@ const BorrowRequestDetail = () => {
                 )}
               </div>
             )}
+
+            {/* Step 4: Borrower uploads return photos */}
+            {request.handover_status === 'confirmed' && !request.returned_at && isBorrower && (
+              <div className="handover-step return-section">
+                <h3>Step 4: Upload Return Photos</h3>
+                <p>Upload photos of the item being returned.</p>
+                <input type="file" accept="image/*" multiple onChange={handleReturnPhotos} disabled={submitting} />
+                {returnPreviews.length && (
+                  <div className="photo-previews">
+                    {returnPreviews.map((preview, i) => (
+                      <img key={i} src={preview} alt={`Return ${i+1}`} className="photo-preview" />
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={submitting || !returnPhotos.length}
+                  onClick={uploadReturnPhotos}
+                >
+                  {submitting ? 'Uploading…' : `Upload ${returnPhotos.length} Return Photo(s)`}
+                </button>
+              </div>
+            )}
+
+            {/* Step 5: Lender confirms return */}
+            {request.handover_status === 'return_photos_uploaded' && isLender && (
+              <div className="handover-step return-section">
+                <h3>Step 5: Confirm Return</h3>
+                <p>Review the return photos and confirm the item was returned in good condition.</p>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={submitting}
+                  onClick={() => confirmReturn(true)}
+                >
+                  {submitting ? 'Confirming…' : 'Confirm Return - Item OK'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  disabled={submitting}
+                  onClick={() => confirmReturn(false)}
+                >
+                  Reject - Start Dispute
+                </button>
+              </div>
+            )}
+
+            {/* Step 6: Ratings after return confirmed */}
+            {request.handover_status === 'return_confirmed' && !request.disputed_at && (
+              <div className="handover-step rating-section">
+                <h3>Step 6: Rate Each Other</h3>
+                {isBorrower && !request.lender_rating && (
+                  <div className="rating-form">
+                    <h4>Rate the Lender</h4>
+                    <div className="star-rating">
+                      {[1,2,3,4,5].map(star => (
+                        <span key={star} className={lenderRating >= star ? 'filled' : ''} onClick={() => setLenderRating(star)}>★</span>
+                      ))}
+                    </div>
+                    <textarea
+                      placeholder="Optional comment"
+                      value={lenderRatingComment}
+                      onChange={(e) => setLenderRatingComment(e.target.value)}
+                      maxLength={500}
+                    />
+                    <button type="button" className="btn-primary" disabled={submitting || !lenderRating} onClick={rateLender}>
+                      {submitting ? 'Submitting…' : 'Submit Rating'}
+                    </button>
+                  </div>
+                )}
+                {isLender && !request.borrower_rating && (
+                  <div className="rating-form">
+                    <h4>Rate the Borrower</h4>
+                    <div className="star-rating">
+                      {[1,2,3,4,5].map(star => (
+                        <span key={star} className={borrowerRating >= star ? 'filled' : ''} onClick={() => setBorrowerRating(star)}>★</span>
+                      ))}
+                    </div>
+                    <textarea
+                      placeholder="Optional comment"
+                      value={borrowerRatingComment}
+                      onChange={(e) => setBorrowerRatingComment(e.target.value)}
+                      maxLength={500}
+                    />
+                    <button type="button" className="btn-primary" disabled={submitting || !borrowerRating} onClick={rateBorrower}>
+                      {submitting ? 'Submitting…' : 'Submit Rating'}
+                    </button>
+                  </div>
+                )}
+                {(request.lender_rating && isBorrower) || (request.borrower_rating && isLender) ? (
+                  <p className="rating-done">Thanks for rating!</p>
+                ) : null}
+              </div>
+            )}
+
+            {/* Show existing ratings */}
+            {request.lender_rating && (
+              <div className="rating-display">
+                <p><strong>Lender Rating:</strong> {'★'.repeat(request.lender_rating)} {'☆'.repeat(5 - request.lender_rating)} ({request.lender_rating}/5)</p>
+                {request.lender_rating_comment && <p>{request.lender_rating_comment}</p>}
+              </div>
+            )}
+            {request.borrower_rating && (
+              <div className="rating-display">
+                <p><strong>Borrower Rating:</strong> {'★'.repeat(request.borrower_rating)} {'☆'.repeat(5 - request.borrower_rating)} ({request.borrower_rating}/5)</p>
+                {request.borrower_rating_comment && <p>{request.borrower_rating_comment}</p>}
+              </div>
+            )}
           </div>
         )}
 
-        {canUseReturnActions && (
+        {/* Return/Dispute section (legacy) - only show if no handover managed */}
+        {canUseReturnActions && !handoverManaged && (
           <div className="rental-lifecycle">
             <h2>Rental status</h2>
             <p>{request.returned_at ? 'Return reported' : 'Return not yet reported'}</p>
