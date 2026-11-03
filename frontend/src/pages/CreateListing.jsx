@@ -30,7 +30,9 @@ const CreateListing = () => {
     lat: 28.6139,
     lon: 77.2090,
     address: '',
-    lending_radius: 5
+    lending_radius: 5,
+    years_owned: '',
+    price_bought: ''
   });
 
   // Temporary Rule-Based Price Calculator state (never saved to database)
@@ -191,13 +193,12 @@ const CreateListing = () => {
   const handleSubmit = async () => {
     setIsLoading(true);
     try {
-      // Ephemeral feature: Do not save purchase price, item age, or estimated value to DB
       const payload = {
         name: formData.title,
         category: formData.category,
         description: formData.description,
-        years_owned: 0,
-        price_bought: 0,
+        years_owned: formData.years_owned ? Number(formData.years_owned) : 0,
+        price_bought: formData.price_bought ? Number(formData.price_bought) : 0,
         price_per_day: Number(formData.price_per_day),
         security_deposit: Number(formData.security_deposit),
         lending_radius_km: Number(formData.lending_radius),
@@ -499,6 +500,35 @@ const CreateListing = () => {
                   step="any"
                   placeholder="e.g. 1000"
                   value={formData.security_deposit} 
+                  onChange={handleInputChange} 
+                />
+              </div>
+
+              {/* Original Purchase Price & Item Age (saved to DB) */}
+              <div className="form-group">
+                <label htmlFor="input-price-bought">Original Purchase Price (₹)</label>
+                <input 
+                  id="input-price-bought"
+                  type="number" 
+                  name="price_bought" 
+                  min="0"
+                  step="any"
+                  placeholder="e.g. 15000"
+                  value={formData.price_bought} 
+                  onChange={handleInputChange} 
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="input-years-owned">Item Age (years)</label>
+                <input 
+                  id="input-years-owned"
+                  type="number" 
+                  name="years_owned" 
+                  min="0"
+                  step="0.5"
+                  placeholder="e.g. 2"
+                  value={formData.years_owned} 
                   onChange={handleInputChange} 
                 />
               </div>
