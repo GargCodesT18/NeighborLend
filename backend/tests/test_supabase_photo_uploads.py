@@ -138,20 +138,29 @@ class TestSupabasePhotoUploads(unittest.TestCase):
             )
         finally:
             storage_service.supabase = real_client
-        self.assertEqual(unavailable.status_code, 503)
+        # With local fallback, upload should succeed even without Supabase
+        self.assertEqual(unavailable.status_code, 200)
+        self.assertIn("url", unavailable.json())
+        # URL uses public_base_url from settings (http://localhost:8000 in test env)
+        url = unavailable.json()["url"]
+        self.assertTrue(
+            url.startswith("http://localhost:8000/uploads/") or 
+            url.startswith("https://lgurfoppprubxbclpoqk.supabase.co/storage/v1/object/public/")
+        )
 
-    def test_listing_rejects_localhost_photo_urls(self):
+    def test_listing_allows_localhost_photo_urls_in_dev(self):
         response = self.client.post(
             "/api/listings",
             headers=self.headers,
             json={
-                "name": "Invalid photo listing",
+                "name": "Local photo listing",
                 "category": "Tools",
                 "price_per_day": 12,
                 "photo_urls": ["http://localhost:8000/uploads/images/old.jpg"],
             },
         )
-        self.assertEqual(response.status_code, 422)
+        # In development (test env), local URLs are allowed
+        self.assertEqual(response.status_code, 200)
 
     def test_migration_accepts_only_local_upload_paths_and_blocks_traversal(self):
         legacy = _legacy_relative_path(

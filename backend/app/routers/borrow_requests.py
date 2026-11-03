@@ -1,7 +1,9 @@
+import json
 import math
 from typing import List, Optional
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import (
@@ -13,6 +15,25 @@ from app.schemas.notification import DisputeCreateIn, HandoverIssueCreateIn
 from app.services.auth import get_current_user
 from app.services.notifications import create_notification
 from app.services.negotiation import calculate_rental_duration_and_cost
+
+# New schemas for handover workflow
+class HandoverPhotosIn(BaseModel):
+    photo_urls: List[str] = Field(..., min_items=1, max_items=10)
+
+class HandoverConfirmIn(BaseModel):
+    photo_urls: List[str] = Field(default_factory=list)  # Borrower can add confirmation photos
+    condition_note: Optional[str] = None
+
+class ReturnPhotosIn(BaseModel):
+    photo_urls: List[str] = Field(..., min_items=1, max_items=10)
+
+class ReturnConfirmIn(BaseModel):
+    approved: bool = True
+    condition_note: Optional[str] = None
+
+class RatingIn(BaseModel):
+    rating: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = None
 
 router = APIRouter()
 
@@ -29,6 +50,15 @@ def _format_request_out(
     *,
     include_private_handover: bool = False,
 ) -> dict:
+    # Parse JSON photo arrays safely
+    def parse_photos(photo_field: Optional[str]) -> List[str]:
+        if not photo_field:
+            return []
+        try:
+            return json.loads(photo_field)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
     return {
         "id": req.id,
         "borrower_id": req.borrower_id,
@@ -55,8 +85,19 @@ def _format_request_out(
         "handover_confirmed_by": req.handover_confirmed_by,
         "handover_issue_description": req.handover_issue_description if include_private_handover else None,
         "handover_issue_reported_at": req.handover_issue_reported_at,
+        "handover_photos": parse_photos(req.handover_photos),
+        "handover_confirmed_photos": parse_photos(req.handover_confirmed_photos),
+        "return_photos": parse_photos(req.return_photos),
+        "return_confirmed_at": req.return_confirmed_at,
+        "return_confirmed_by": req.return_confirmed_by,
         "borrowing_started_at": req.borrowing_started_at,
         "return_due_at": req.return_due_at,
+        "lender_rating": req.lender_rating,
+        "borrower_rating": req.borrower_rating,
+        "lender_rating_comment": req.lender_rating_comment,
+        "borrower_rating_comment": req.borrower_rating_comment,
+        "lender_rated_at": req.lender_rated_at,
+        "borrower_rated_at": req.borrower_rated_at,
         "conversation_id": _handover_conversation_id(req) if include_private_handover else None,
         "distance_km": distance_km,
         "created_at": req.created_at
@@ -198,6 +239,215 @@ def report_handover_issue(
     db.commit()
     db.refresh(req)
     return _format_request_out(req, include_private_handover=True)
+
+
+# ==================== NEW HANDOVER WORKFLOW ENDPOINTS ====================
+
+@router.post("/{request_id}/handover/upload-photos", response_model=BorrowRequestOut)
+def upload_handover_photos(
+    request_id: str,
+    data: HandoverPhotosIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Lender uploads photos of the item before handover."""
+    req, lender_id = _get_handover_request(request_id, db, current_user, lock=True)
+    if current_user.id != lender_id:
+        raise HTTPException(status_code=403, detail="Only the lender can upload handover photos")
+    if req.handover_status not in (HandoverStatus.pending.value, HandoverStatus.photos_uploaded.value):
+        raise HTTPException(status_code=409, detail="Handover is not in a state to upload photos")
+
+    req.handover_photos = json.dumps(data.photo_urls)
+    req.handover_status = HandoverStatus.photos_uploaded.value
+    req.updated_at = datetime.utcnow()
+    create_notification(
+        db, req.borrower_id, "handover_photos_uploaded", "Lender Uploaded Handover Photos",
+        f"{current_user.name} uploaded photos of {req.title} for your review before handover.",
+        f"/borrow-requests/{req.id}", req.id,
+    )
+    _record_handover_event(db, req, current_user, f"{current_user.name} uploaded {len(data.photo_urls)} handover photo(s) for {req.title}.")
+    db.commit()
+    db.refresh(req)
+    return _format_request_out(req, include_private_handover=True)
+
+
+@router.post("/{request_id}/handover/confirm-with-photos", response_model=BorrowRequestOut)
+def confirm_handover_with_photos(
+    request_id: str,
+    data: HandoverConfirmIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Borrower confirms receipt of item, optionally with confirmation photos."""
+    req, lender_id = _get_handover_request(request_id, db, current_user, lock=True)
+    if current_user.id != req.borrower_id:
+        raise HTTPException(status_code=403, detail="Only the borrower can confirm handover")
+    if req.handover_status not in (HandoverStatus.photos_uploaded.value, HandoverStatus.marked_given.value):
+        raise HTTPException(status_code=409, detail="Handover photos must be uploaded by lender first")
+    if req.needed_from is None or req.needed_until is None:
+        raise HTTPException(status_code=409, detail="Agreed rental dates are missing")
+
+    try:
+        days, _ = calculate_rental_duration_and_cost(
+            req.max_price_per_day or 0, req.needed_from, req.needed_until
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=f"Invalid agreed rental dates: {exc}") from exc
+    now = datetime.utcnow()
+    req.handover_confirmed_photos = json.dumps(data.photo_urls) if data.photo_urls else None
+    req.handover_status = HandoverStatus.confirmed.value
+    req.handover_confirmed_at = now
+    req.handover_confirmed_by = current_user.id
+    req.borrowing_started_at = now
+    req.return_due_at = now + timedelta(days=days)
+    req.status = BorrowRequestStatus.fulfilled
+    create_notification(
+        db, lender_id, "handover_confirmed", "Borrower Confirmed Receipt",
+        f"{current_user.name} confirmed receipt of {req.title} in the agreed condition.",
+        f"/borrow-requests/{req.id}", req.id,
+    )
+    _record_handover_event(db, req, current_user, f"{current_user.name} confirmed receipt of {req.title}. Borrowing is now active.")
+    db.commit()
+    db.refresh(req)
+    return _format_request_out(req, include_private_handover=True)
+
+
+@router.post("/{request_id}/return/upload-photos", response_model=BorrowRequestOut)
+def upload_return_photos(
+    request_id: str,
+    data: ReturnPhotosIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Borrower uploads photos of item being returned."""
+    req, lender_id = _get_rental_participants(request_id, db, current_user)
+    if current_user.id != req.borrower_id:
+        raise HTTPException(status_code=403, detail="Only the borrower can upload return photos")
+    if req.handover_status not in (HandoverStatus.confirmed.value, HandoverStatus.return_photos_uploaded.value):
+        raise HTTPException(status_code=409, detail="Return photos can only be uploaded for active rentals")
+    if req.returned_at is not None:
+        raise HTTPException(status_code=409, detail="Return already reported")
+
+    req.return_photos = json.dumps(data.photo_urls)
+    req.handover_status = HandoverStatus.return_photos_uploaded.value
+    req.returned_at = datetime.utcnow()
+    req.updated_at = datetime.utcnow()
+    create_notification(
+        db, lender_id, "return_photos_uploaded", "Borrower Uploaded Return Photos",
+        f"{current_user.name} uploaded photos for return of {req.title}. Please review and confirm.",
+        f"/borrow-requests/{req.id}", req.id,
+    )
+    _record_handover_event(db, req, current_user, f"{current_user.name} uploaded {len(data.photo_urls)} return photo(s) for {req.title}.")
+    db.commit()
+    db.refresh(req)
+    return _format_request_out(req, include_private_handover=True)
+
+
+@router.post("/{request_id}/return/confirm", response_model=BorrowRequestOut)
+def confirm_return(
+    request_id: str,
+    data: ReturnConfirmIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Lender confirms return of item (or initiates dispute if not approved)."""
+    req, lender_id = _get_rental_participants(request_id, db, current_user)
+    if current_user.id != lender_id:
+        raise HTTPException(status_code=403, detail="Only the lender can confirm return")
+    if req.handover_status != HandoverStatus.return_photos_uploaded.value:
+        raise HTTPException(status_code=409, detail="Return photos must be uploaded by borrower first")
+    if req.returned_at is None:
+        raise HTTPException(status_code=409, detail="Return not yet reported")
+
+    if data.approved:
+        now = datetime.utcnow()
+        req.handover_status = HandoverStatus.return_confirmed.value
+        req.return_confirmed_at = now
+        req.return_confirmed_by = current_user.id
+        req.status = BorrowRequestStatus.closed
+        create_notification(
+            db, req.borrower_id, "return_confirmed", "Return Confirmed",
+            f"{current_user.name} confirmed return of {req.title}. Rental completed successfully.",
+            f"/borrow-requests/{req.id}", req.id,
+        )
+        _record_handover_event(db, req, current_user, f"{current_user.name} confirmed return of {req.title}. Rental completed.")
+        db.commit()
+        db.refresh(req)
+        return _format_request_out(req, include_private_handover=True)
+    else:
+        # Dispute initiated
+        req.disputed_at = datetime.utcnow()
+        req.dispute_description = data.condition_note or "Lender did not approve return condition"
+        create_notification(
+            db, req.borrower_id, "dispute", "Return Dispute Initiated",
+            f"{current_user.name} raised a dispute for return of {req.title}.",
+            f"/borrow-requests/{req.id}", req.id,
+        )
+        _record_handover_event(db, req, current_user, f"{current_user.name} initiated a dispute for return of {req.title}: {req.dispute_description}")
+        db.commit()
+        db.refresh(req)
+        return _format_request_out(req, include_private_handover=True)
+
+
+@router.post("/{request_id}/rate-lender", response_model=BorrowRequestOut)
+def rate_lender(
+    request_id: str,
+    data: RatingIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Borrower rates the lender after rental completion."""
+    req, lender_id = _get_rental_participants(request_id, db, current_user)
+    if current_user.id != req.borrower_id:
+        raise HTTPException(status_code=403, detail="Only the borrower can rate the lender")
+    if req.handover_status != HandoverStatus.return_confirmed.value:
+        raise HTTPException(status_code=409, detail="Can only rate after return is confirmed")
+    if req.lender_rating is not None:
+        raise HTTPException(status_code=409, detail="Lender already rated for this rental")
+
+    req.lender_rating = data.rating
+    req.lender_rating_comment = data.comment
+    req.lender_rated_at = datetime.utcnow()
+    create_notification(
+        db, lender_id, "rating", "You Received a Rating",
+        f"{current_user.name} rated you {data.rating}/5 stars for {req.title}.",
+        f"/borrow-requests/{req.id}", req.id,
+    )
+    _record_handover_event(db, req, current_user, f"{current_user.name} rated lender {data.rating}/5 stars for {req.title}.")
+    db.commit()
+    db.refresh(req)
+    return _format_request_out(req, include_private_handover=True)
+
+
+@router.post("/{request_id}/rate-borrower", response_model=BorrowRequestOut)
+def rate_borrower(
+    request_id: str,
+    data: RatingIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Lender rates the borrower after rental completion."""
+    req, lender_id = _get_rental_participants(request_id, db, current_user)
+    if current_user.id != lender_id:
+        raise HTTPException(status_code=403, detail="Only the lender can rate the borrower")
+    if req.handover_status != HandoverStatus.return_confirmed.value:
+        raise HTTPException(status_code=409, detail="Can only rate after return is confirmed")
+    if req.borrower_rating is not None:
+        raise HTTPException(status_code=409, detail="Borrower already rated for this rental")
+
+    req.borrower_rating = data.rating
+    req.borrower_rating_comment = data.comment
+    req.borrower_rated_at = datetime.utcnow()
+    create_notification(
+        db, req.borrower_id, "rating", "You Received a Rating",
+        f"{current_user.name} rated you {data.rating}/5 stars for {req.title}.",
+        f"/borrow-requests/{req.id}", req.id,
+    )
+    _record_handover_event(db, req, current_user, f"{current_user.name} rated borrower {data.rating}/5 stars for {req.title}.")
+    db.commit()
+    db.refresh(req)
+    return _format_request_out(req, include_private_handover=True)
+
 
 @router.post("", response_model=BorrowRequestOut)
 @router.post("/", response_model=BorrowRequestOut)

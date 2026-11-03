@@ -25,9 +25,12 @@ class BorrowRequestStatus(str, enum.Enum):
 class HandoverStatus(str, enum.Enum):
     not_applicable = "not_applicable"
     pending = "pending"
-    marked_given = "marked_given"
-    confirmed = "confirmed"
+    photos_uploaded = "photos_uploaded"          # Lender uploaded photos of item
+    marked_given = "marked_given"                # Lender marked as handed over
+    confirmed = "confirmed"                      # Borrower confirmed receipt
     issue_reported = "issue_reported"
+    return_photos_uploaded = "return_photos_uploaded"  # Borrower uploaded return photos
+    return_confirmed = "return_confirmed"        # Lender confirmed return
 
 class User(Base):
     __tablename__ = "users"
@@ -121,11 +124,22 @@ class BorrowRequest(Base):
     handover_confirmed_by = Column(String, nullable=True)
     handover_issue_description = Column(Text, nullable=True)
     handover_issue_reported_at = Column(DateTime, nullable=True)
+    handover_photos = Column(Text, nullable=True)           # JSON array of photo URLs (lender uploads)
+    handover_confirmed_photos = Column(Text, nullable=True) # JSON array of photo URLs (borrower confirms)
+    return_photos = Column(Text, nullable=True)             # JSON array of photo URLs (borrower uploads on return)
+    return_confirmed_at = Column(DateTime, nullable=True)
+    return_confirmed_by = Column(String, nullable=True)
     borrowing_started_at = Column(DateTime, nullable=True)
     return_due_at = Column(DateTime, nullable=True)
     returned_at = Column(DateTime, nullable=True)
     disputed_at = Column(DateTime, nullable=True)
     dispute_description = Column(Text, nullable=True)
+    lender_rating = Column(Integer, nullable=True)          # Rating given by borrower to lender (1-5)
+    borrower_rating = Column(Integer, nullable=True)        # Rating given by lender to borrower (1-5)
+    lender_rating_comment = Column(Text, nullable=True)
+    borrower_rating_comment = Column(Text, nullable=True)
+    lender_rated_at = Column(DateTime, nullable=True)
+    borrower_rated_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     borrower = relationship("User", back_populates="borrow_requests", foreign_keys=[borrower_id])

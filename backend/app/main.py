@@ -44,12 +44,14 @@ def _preload_model():
     except Exception as exc:
         logging.getLogger(__name__).warning(f"YOLOv8 pre-load skipped: {exc}")
 
+# Create tables at import time for test compatibility (also runs in lifespan for production)
+Base.metadata.create_all(bind=engine)
+migrate_schema()
+os.makedirs(settings.upload_dir_abs, exist_ok=True)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    Base.metadata.create_all(bind=engine)
-    migrate_schema()
-    os.makedirs(settings.upload_dir_abs, exist_ok=True)
+    # Startup - preload model
     _preload_model()
     yield
     # Shutdown (if needed)

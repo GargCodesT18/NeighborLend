@@ -47,8 +47,19 @@ class BorrowRequestOut(BaseModel):
     handover_confirmed_by: Optional[str] = None
     handover_issue_description: Optional[str] = None
     handover_issue_reported_at: Optional[datetime] = None
+    handover_photos: Optional[List[str]] = []
+    handover_confirmed_photos: Optional[List[str]] = []
+    return_photos: Optional[List[str]] = []
+    return_confirmed_at: Optional[datetime] = None
+    return_confirmed_by: Optional[str] = None
     borrowing_started_at: Optional[datetime] = None
     return_due_at: Optional[datetime] = None
+    lender_rating: Optional[int] = None
+    borrower_rating: Optional[int] = None
+    lender_rating_comment: Optional[str] = None
+    borrower_rating_comment: Optional[str] = None
+    lender_rated_at: Optional[datetime] = None
+    borrower_rated_at: Optional[datetime] = None
     conversation_id: Optional[str] = None
     distance_km: Optional[float] = None
     created_at: datetime
