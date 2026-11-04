@@ -128,8 +128,29 @@
   color: var(--text-secondary);
 }
 
+.photo-preview {
+  max-width: 120px;
+  max-height: 120px;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  object-position: center;
+}
+
+.photo-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 @media (max-width: 600px) {
   .rental-detail-card {
     padding: 22px;
+  }
+  .photo-preview {
+    max-width: 80px;
+    max-height: 80px;
   }
 }
