@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { MessageCircle, Upload, CheckCircle, Star, Eye } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
+import { resolvePhotoUrl } from '../utils/photoUrl';
 import './BorrowRequestDetail.css';
 
 const HANDOVER_LABELS = {
@@ -320,7 +321,7 @@ const BorrowRequestDetail = () => {
                 {request.handover_photos && request.handover_photos.length > 0 && (
                   <div className="photo-previews">
                     {request.handover_photos.map((url, i) => (
-                      <img key={i} src={url} alt={`Lender Photo ${i+1}`} className="photo-preview" />
+                      <img key={i} src={resolvePhotoUrl(url)} alt={`Lender Photo ${i+1}`} className="photo-preview" />
                     ))}
                   </div>
                 )}
