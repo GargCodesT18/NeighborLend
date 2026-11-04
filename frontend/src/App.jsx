@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import VerifyEmail from './pages/VerifyEmail';
 import Inbox from './pages/Inbox';
 import BorrowRequestDetail from './pages/BorrowRequestDetail';
+import MyBorrowRequests from './pages/MyBorrowRequests';
 import Browse from './pages/Browse';
 import CreateListing from './pages/CreateListing';
 import CreateBorrowRequest from './pages/CreateBorrowRequest';
@@ -58,6 +59,11 @@ function App() {
             <Route path="/my-listings" element={
               <ProtectedRoute>
                 <MyListings />
+              </ProtectedRoute>
+            } />
+            <Route path="/my-borrow-requests" element={
+              <ProtectedRoute>
+                <MyBorrowRequests />
               </ProtectedRoute>
             } />
             <Route path="/messages" element={

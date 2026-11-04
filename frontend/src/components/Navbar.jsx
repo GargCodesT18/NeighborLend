@@ -57,6 +57,7 @@ const Navbar = () => {
               <Link to="/create-listing" className={`nav-link ${isActive('/create-listing')}`}>Lend Item</Link>
               <Link to="/create-request" className={`nav-link ${isActive('/create-request')}`}>Request Item</Link>
               <Link to="/my-listings" className={`nav-link ${isActive('/my-listings')}`}>My Listings</Link>
+              <Link to="/my-borrow-requests" className={`nav-link ${isActive('/my-borrow-requests')}`}>My Borrow Requests</Link>
               <Link to="/messages" className={`nav-link ${isActive('/messages')}`}>Messages</Link>
               <Link to="/inbox" className={`nav-link ${isActive('/inbox')}`}>
                 Inbox{unreadCount > 0 && <span className="unread-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
@@ -99,6 +100,7 @@ const Navbar = () => {
               <Link to="/create-listing" className={`nav-link ${isActive('/create-listing')}`} onClick={() => setMobileMenuOpen(false)}>Lend Item</Link>
               <Link to="/create-request" className={`nav-link ${isActive('/create-request')}`} onClick={() => setMobileMenuOpen(false)}>Request Item</Link>
               <Link to="/my-listings" className={`nav-link ${isActive('/my-listings')}`} onClick={() => setMobileMenuOpen(false)}>My Listings</Link>
+              <Link to="/my-borrow-requests" className={`nav-link ${isActive('/my-borrow-requests')}`} onClick={() => setMobileMenuOpen(false)}>My Borrow Requests</Link>
               <Link to="/messages" className={`nav-link ${isActive('/messages')}`} onClick={() => setMobileMenuOpen(false)}>Messages</Link>
               <Link to="/inbox" className={`nav-link ${isActive('/inbox')}`} onClick={() => setMobileMenuOpen(false)}>
                 Inbox{unreadCount > 0 && <span className="unread-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
