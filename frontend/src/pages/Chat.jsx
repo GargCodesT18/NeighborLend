@@ -310,9 +310,14 @@ const Chat = () => {
   const handleAcceptOffer = async (offerId) => {
     if (!window.confirm('Accept this rental offer? This will initiate the borrow booking request.')) return;
     try {
-      await api.post(`/offers/${offerId}/accept`);
+      const response = await api.post(`/offers/${offerId}/accept`);
+      const borrowRequestId = response.data?.borrow_request_id;
       await fetchActiveConversation(activeConv.id, true);
       fetchConversations(true);
+      if (borrowRequestId) {
+        // Auto-navigate to the new borrow request to start handover workflow
+        navigate(`/borrow-requests/${borrowRequestId}`);
+      }
     } catch (err) {
       console.error('Failed to accept offer:', err);
       alert(err.response?.data?.detail || 'Failed to accept offer.');
