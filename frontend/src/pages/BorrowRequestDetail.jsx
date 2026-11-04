@@ -7,9 +7,9 @@ import './BorrowRequestDetail.css';
 
 const HANDOVER_LABELS = {
   pending: 'Awaiting Product Handover',
-  photos_uploaded: 'Photos Uploaded - Awaiting Handover',
-  marked_given: 'Awaiting Borrower Confirmation',
-  confirmed: 'Handover Confirmed',
+  photos_uploaded: 'Photos Uploaded - Borrower to Confirm Receipt',
+  borrower_confirmed: 'Borrower Confirmed - Lender to Confirm Handover',
+  lender_confirmed: 'Handover Complete',
   issue_reported: 'Issue Reported',
   return_photos_uploaded: 'Return Photos Uploaded - Awaiting Lender Confirmation',
   return_confirmed: 'Return Confirmed',
@@ -63,7 +63,7 @@ const BorrowRequestDetail = () => {
   }, [fetchRequest]);
 
   useEffect(() => {
-    if (!request || !['pending', 'marked_given'].includes(request.handover_status)) return undefined;
+    if (!request || !['pending', 'photos_uploaded', 'borrower_confirmed'].includes(request.handover_status)) return undefined;
     const isParticipant = user && [request.borrower_id, request.lender_id].includes(user.id);
     if (!isParticipant) return undefined;
     const timer = window.setInterval(async () => {
@@ -260,7 +260,7 @@ const BorrowRequestDetail = () => {
   const isLender = user?.id === request.lender_id;
   const isBorrower = user?.id === request.borrower_id;
   const canUseReturnActions = canManageRental
-    && (!handoverManaged || request.handover_status === 'confirmed');
+    && (!handoverManaged || request.handover_status === 'lender_confirmed');
 
   return (
     <section className="rental-detail-page container fade-in-up">
@@ -310,30 +310,11 @@ const BorrowRequestDetail = () => {
               </div>
             )}
 
-            {/* Step 2: Lender marks as given (after photos) */}
-            {request.handover_status === 'photos_uploaded' && isLender && (
+            {/* Step 2: Borrower confirms receipt after seeing photos */}
+            {request.handover_status === 'photos_uploaded' && isBorrower && (
               <div className="handover-step">
-                <h3>Step 2: Mark as Handed Over</h3>
-                <p>Photos uploaded. Now confirm you physically handed the item to the borrower.</p>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={submitting}
-                  onClick={() => runHandoverAction(
-                    'mark-given',
-                    'Confirm that you physically handed this product to the borrower. They will be asked to inspect and confirm it.',
-                  )}
-                >
-                  {submitting ? 'Updating…' : 'Mark as Handed Over'}
-                </button>
-              </div>
-            )}
-
-            {/* Step 3: Borrower confirms with optional photos */}
-            {request.handover_status === 'marked_given' && isBorrower && (
-              <div className="handover-step">
-                <h3>Step 3: Confirm Receipt</h3>
-                <p>Inspect the product and confirm you received it in good condition. Optionally add photos.</p>
+                <h3>Step 2: Confirm You Received the Item</h3>
+                <p>Review the lender's photos above. If the item looks correct, confirm you received it.</p>
                 <input type="file" accept="image/*" multiple onChange={handleConfirmPhotos} disabled={submitting} />
                 {confirmPreviews.length && (
                   <div className="photo-previews">
@@ -348,7 +329,7 @@ const BorrowRequestDetail = () => {
                   disabled={submitting}
                   onClick={confirmHandoverWithPhotos}
                 >
-                  {submitting ? 'Confirming…' : 'Received in Good Condition'}
+                  {submitting ? 'Confirming…' : 'I Received This Item'}
                 </button>
                 {!issueFormOpen && (
                   <button type="button" className="btn-outline" disabled={submitting} onClick={() => setIssueFormOpen(true)}>
@@ -378,9 +359,25 @@ const BorrowRequestDetail = () => {
               </div>
             )}
 
-            {request.handover_status === 'confirmed' && (
+            {/* Step 3: Lender confirms handover complete */}
+            {request.handover_status === 'borrower_confirmed' && isLender && (
+              <div className="handover-step">
+                <h3>Step 3: Confirm Handover Complete</h3>
+                <p>Borrower has marked the item as received. Confirm the handover is complete.</p>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={submitting}
+                  onClick={() => runHandoverAction('lender-confirm', 'Confirm the handover is complete.')}
+                >
+                  {submitting ? 'Confirming…' : 'Confirm Handover Complete'}
+                </button>
+              </div>
+            )}
+
+            {request.handover_status === 'lender_confirmed' && (
               <div className="handover-active-details">
-                <p>Confirmed: {formatDateTime(request.handover_confirmed_at)}</p>
+                <p>Handover confirmed: {formatDateTime(request.handover_confirmed_at)}</p>
                 <p>Borrowing started: {formatDateTime(request.borrowing_started_at)}</p>
                 <p>Return due: {formatDateTime(request.return_due_at)}</p>
                 <p className="handover-active-label">Borrowing is active.</p>
@@ -401,7 +398,7 @@ const BorrowRequestDetail = () => {
             )}
 
             {/* Step 4: Borrower uploads return photos */}
-            {request.handover_status === 'confirmed' && !request.returned_at && isBorrower && (
+            {request.handover_status === 'lender_confirmed' && !request.returned_at && isBorrower && (
               <div className="handover-step return-section">
                 <h3>Step 4: Upload Return Photos</h3>
                 <p>Upload photos of the item being returned.</p>

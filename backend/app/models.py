@@ -26,8 +26,8 @@ class HandoverStatus(str, enum.Enum):
     not_applicable = "not_applicable"
     pending = "pending"
     photos_uploaded = "photos_uploaded"          # Lender uploaded photos of item
-    marked_given = "marked_given"                # Lender marked as handed over
-    confirmed = "confirmed"                      # Borrower confirmed receipt
+    borrower_confirmed = "borrower_confirmed"    # Borrower marked as received (starts rental)
+    lender_confirmed = "lender_confirmed"        # Lender confirmed handover complete
     issue_reported = "issue_reported"
     return_photos_uploaded = "return_photos_uploaded"  # Borrower uploaded return photos
     return_confirmed = "return_confirmed"        # Lender confirmed return

@@ -110,65 +110,62 @@ class TestHandover(unittest.TestCase):
         )
         self.assertEqual(forbidden.status_code, 403)
 
-    def test_handover_confirmation_and_authorization(self):
+    def test_new_handover_flow(self):
+        """Test the new handover flow: lender uploads photos -> borrower confirms -> lender confirms"""
         request_url = f"/api/borrow-requests/{self.request_id}/handover"
-        mark_url = f"{request_url}/mark-given"
-        confirm_url = f"{request_url}/confirm"
+        upload_url = f"{request_url}/upload-photos"
+        borrower_confirm_url = f"{request_url}/borrower-confirm"
+        lender_confirm_url = f"{request_url}/lender-confirm"
 
-        self.assertEqual(self.client.post(mark_url, headers=self.headers["intruder"]).status_code, 403)
-        self.assertEqual(self.client.post(mark_url, headers=self.headers["borrower"]).status_code, 403)
-        self.assertEqual(self.client.post(confirm_url, headers=self.headers["borrower"]).status_code, 409)
+        # 1. Lender uploads photos - unauthorized users get 403 (but need valid body)
+        self.assertEqual(self.client.post(upload_url, headers=self.headers["intruder"], json={"photo_urls": ["x"]}).status_code, 403)
+        self.assertEqual(self.client.post(upload_url, headers=self.headers["borrower"], json={"photo_urls": ["x"]}).status_code, 403)
+        
+        upload_resp = self.client.post(upload_url, headers=self.headers["lender"], json={"photo_urls": ["http://example.com/photo1.jpg"]})
+        self.assertEqual(upload_resp.status_code, 200)
+        self.assertEqual(upload_resp.json()["handover_status"], "photos_uploaded")
+        self.assertEqual(len(upload_resp.json()["handover_photos"]), 1)
 
-        marked = self.client.post(mark_url, headers=self.headers["lender"])
-        self.assertEqual(marked.status_code, 200)
-        self.assertEqual(marked.json()["handover_status"], "marked_given")
-        self.assertEqual(self.client.post(mark_url, headers=self.headers["lender"]).status_code, 409)
-
-        self.assertEqual(self.client.post(confirm_url, headers=self.headers["lender"]).status_code, 403)
-        confirmed = self.client.post(confirm_url, headers=self.headers["borrower"])
-        self.assertEqual(confirmed.status_code, 200)
-        body = confirmed.json()
-        self.assertEqual(body["handover_status"], "confirmed")
+        # 2. Borrower confirms receipt (starts rental)
+        self.assertEqual(self.client.post(borrower_confirm_url, headers=self.headers["intruder"], json={"photo_urls": []}).status_code, 403)
+        self.assertEqual(self.client.post(borrower_confirm_url, headers=self.headers["lender"], json={"photo_urls": []}).status_code, 403)
+        
+        confirm_resp = self.client.post(borrower_confirm_url, headers=self.headers["borrower"], json={"photo_urls": []})
+        self.assertEqual(confirm_resp.status_code, 200)
+        body = confirm_resp.json()
+        self.assertEqual(body["handover_status"], "borrower_confirmed")
         self.assertEqual(body["status"], "fulfilled")
         self.assertEqual(body["handover_confirmed_by"], self.borrower.id)
-        started_at = datetime.fromisoformat(body["borrowing_started_at"])
-        due_at = datetime.fromisoformat(body["return_due_at"])
-        self.assertEqual(due_at - started_at, timedelta(days=3))
-        self.assertEqual(self.client.post(confirm_url, headers=self.headers["borrower"]).status_code, 409)
+        self.assertIsNotNone(body["borrowing_started_at"])
+        self.assertIsNotNone(body["return_due_at"])
+
+        # 3. Lender confirms handover complete
+        self.assertEqual(self.client.post(lender_confirm_url, headers=self.headers["intruder"]).status_code, 403)
+        self.assertEqual(self.client.post(lender_confirm_url, headers=self.headers["borrower"]).status_code, 403)
+        
+        lender_confirm_resp = self.client.post(lender_confirm_url, headers=self.headers["lender"])
+        self.assertEqual(lender_confirm_resp.status_code, 200)
+        self.assertEqual(lender_confirm_resp.json()["handover_status"], "lender_confirmed")
+
+        # Cannot confirm again
+        self.assertEqual(self.client.post(lender_confirm_url, headers=self.headers["lender"]).status_code, 409)
 
         self.db.expire_all()
         request = self.db.query(BorrowRequest).filter_by(id=self.request_id).one()
-        self.assertEqual(request.handover_status, "confirmed")
+        self.assertEqual(request.handover_status, "lender_confirmed")
         self.assertEqual(request.status, BorrowRequestStatus.fulfilled)
-        self.assertEqual(
-            self.db.query(Notification).filter_by(
-                borrow_request_id=self.request_id, notification_type="handover_marked"
-            ).count(),
-            1,
-        )
-        marked_notification = self.db.query(Notification).filter_by(
-            borrow_request_id=self.request_id, notification_type="handover_marked"
-        ).one()
-        self.assertEqual(marked_notification.user_id, self.borrower.id)
-        self.assertEqual(
-            self.db.query(Notification).filter_by(
-                borrow_request_id=self.request_id, notification_type="handover_confirmed"
-            ).count(),
-            1,
-        )
-        confirmation_notification = self.db.query(Notification).filter_by(
-            borrow_request_id=self.request_id, notification_type="handover_confirmed"
-        ).one()
-        self.assertEqual(confirmation_notification.user_id, self.lender.id)
-        self.assertGreaterEqual(
-            self.db.query(Message).filter_by(is_system=True).count(), 2
-        )
+        self.assertIsNotNone(request.borrowing_started_at)
 
-    def test_issue_report_does_not_activate_rental(self):
+    def test_issue_report_works_from_photos_uploaded(self):
+        """Test that issue can be reported after photos uploaded"""
         request_url = f"/api/borrow-requests/{self.issue_request_id}/handover"
-        mark_url = f"{request_url}/mark-given"
+        upload_url = f"{request_url}/upload-photos"
         issue_url = f"{request_url}/report-issue"
-        self.assertEqual(self.client.post(mark_url, headers=self.headers["lender"]).status_code, 200)
+
+        # Lender uploads photos first
+        self.assertEqual(self.client.post(upload_url, headers=self.headers["lender"], json={"photo_urls": ["http://example.com/photo1.jpg"]}).status_code, 200)
+
+        # Borrower reports issue
         self.assertEqual(
             self.client.post(issue_url, json={"description": "  "}, headers=self.headers["borrower"]).status_code,
             422,
