@@ -135,6 +135,7 @@ const BorrowRequestDetail = () => {
   const confirmHandoverWithPhotos = async () => {
     setSubmitting(true); setError('');
     try {
+      // Upload files to /upload to get URLs
       const urls = [];
       for (const file of confirmPhotos) {
         const form = new FormData();
@@ -142,7 +143,8 @@ const BorrowRequestDetail = () => {
         const res = await api.post('/upload', form);
         urls.push(res.data.url);
       }
-      await api.post(`/borrow-requests/${id}/handover/confirm-with-photos`, { photo_urls: urls });
+      // Then confirm handover with photos using the correct endpoint
+      await api.post(`/borrow-requests/${id}/handover/borrower-confirm`, { photo_urls: urls });
       setConfirmPhotos([]); setConfirmPreviews([]);
       await fetchRequest();
       window.dispatchEvent(new Event('notifications:updated'));
@@ -315,6 +317,13 @@ const BorrowRequestDetail = () => {
               <div className="handover-step">
                 <h3>Step 2: Confirm You Received the Item</h3>
                 <p>Review the lender's photos above. If the item looks correct, confirm you received it.</p>
+                {request.handover_photos && request.handover_photos.length > 0 && (
+                  <div className="photo-previews">
+                    {request.handover_photos.map((url, i) => (
+                      <img key={i} src={url} alt={`Lender Photo ${i+1}`} className="photo-preview" />
+                    ))}
+                  </div>
+                )}
                 <input type="file" accept="image/*" multiple onChange={handleConfirmPhotos} disabled={submitting} />
                 {confirmPreviews.length && (
                   <div className="photo-previews">
