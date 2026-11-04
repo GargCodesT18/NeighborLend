@@ -498,7 +498,10 @@ def list_borrow_requests(
     radius_km: float = 50.0,
     db: Session = Depends(get_db)
 ):
-    query = db.query(BorrowRequest).filter(BorrowRequest.status == BorrowRequestStatus.open)
+    from sqlalchemy.orm import joinedload
+    query = db.query(BorrowRequest).options(
+        joinedload(BorrowRequest.listing)
+    ).filter(BorrowRequest.status == BorrowRequestStatus.open)
     if category:
         query = query.filter(BorrowRequest.category == category)
         
@@ -517,7 +520,10 @@ def list_borrow_requests(
 
 @router.get("/my", response_model=List[BorrowRequestOut])
 def list_my_requests(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    all_reqs = db.query(BorrowRequest).filter(
+    from sqlalchemy.orm import joinedload
+    all_reqs = db.query(BorrowRequest).options(
+        joinedload(BorrowRequest.listing)
+    ).filter(
         BorrowRequest.borrower_id == current_user.id,
         BorrowRequest.status != BorrowRequestStatus.cancelled
     ).all()
@@ -526,7 +532,10 @@ def list_my_requests(current_user: User = Depends(get_current_user), db: Session
 
 @router.get("/{request_id}", response_model=BorrowRequestOut)
 def get_borrow_request(request_id: str, db: Session = Depends(get_db)):
-    req = db.query(BorrowRequest).filter(
+    from sqlalchemy.orm import joinedload
+    req = db.query(BorrowRequest).options(
+        joinedload(BorrowRequest.listing)
+    ).filter(
         BorrowRequest.id == request_id,
         BorrowRequest.status != BorrowRequestStatus.cancelled,
     ).first()
